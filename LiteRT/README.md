@@ -1,52 +1,71 @@
-# LiteRtLm build workspace
+# LiteRT build workspace
 
-This directory is a self-contained Bazel build workspace for producing
-`LiteRtLm.dll` (Win64) and `libLiteRtLm.so` (Android arm64-v8a) from
-source for the `ino_lite_rt_ue` Unreal Engine plugin.
+This directory is the build workspace for the `ino_lite_rt_ue` plugin's
+two on-device ML runtimes:
 
-The build is deliberately **outside** of UE's build pipeline. It runs
-once per dev machine per upstream version bump; UE just links against
-the artifacts it stages.
+- **LiteRT-LM** — Google's on-device LLM runtime (Gemma 4, tool calling,
+  streaming). Built from source via Bazel, produces `LiteRtLm.dll` /
+  `libLiteRtLm.so`.
+- **LiteRT** — Google's underlying TFLite-based inference runtime. The
+  compiled `libLiteRt.dll` is shipped pre-built by Google inside the
+  LiteRT-LM submodule (so we don't compile it ourselves), but its source
+  is also vendored here as a submodule for header staging.
+
+The Bazel build is deliberately **outside** of UE's build pipeline. It
+runs once per dev machine per upstream version bump; UE just links
+against the artifacts it stages into `Source/ThirdParty/LiteRTLM/` and
+`Binaries/ThirdParty/LiteRTLM/`.
 
 ## Layout
 
 ```
-LiteRtLm/
-├── LITERT_LM_TAG           Plain-text pinned upstream commit SHA
+LiteRT/
+├── LITERT_TAG              Plain-text pinned LiteRT commit SHA
+├── LITERT_LM_TAG           Plain-text pinned LiteRT-LM commit SHA
 ├── README.md               This file
-├── overlay/                Files staged into the submodule before each build
+│
+├── overlay/                Files staged into the LiteRT-LM submodule before each build
 │   └── ino/
 │       ├── BUILD.bazel     Defines //ino:LiteRtLm target (cc_binary, linkshared=1)
 │       └── LiteRtLm_exports.cc   DllMain stub + force-reference of every
 │                                 litert_lm_* C API function (so MSVC's
 │                                 linker pulls their .obj files out of
 │                                 //c:engine's static archive).
-├── scripts/
+│
+├── scripts/                LiteRT-LM build automation
 │   ├── setup.ps1                 One-time preflight + overlay application
-│   ├── build-win64.ps1           Build + stage Win64 artifacts into the plugin
-│   ├── build-android-arm64.ps1   Cross-compile + stage Android artifacts
-│   ├── update-litert.ps1         Bump submodule to a new ref and rebuild
+│   ├── build-win64.ps1           Build + stage Win64 LiteRT-LM artifacts
+│   ├── build-android-arm64.ps1   Cross-compile + stage Android LiteRT-LM artifacts
+│   ├── update-litert.ps1         Bump LiteRT-LM submodule + rebuild
 │   └── clean.ps1                 Wipe Bazel cache for this workspace
+│
 └── vendor/
-    └── LiteRT-LM/          Git submodule → https://github.com/google-ai-edge/LiteRT-LM
+    ├── LiteRT/             Git submodule → google-ai-edge/LiteRT
+    │                       Pinned to the same commit as
+    │                       LiteRT-LM's WORKSPACE LITERT_REF.
+    │                       Used for staging LiteRT C API headers.
+    └── LiteRT-LM/          Git submodule → google-ai-edge/LiteRT-LM
+                            Pinned to LITERT_LM_TAG. Bazel builds this.
 ```
+
+**Note:** there are currently no standalone LiteRT build scripts. The
+`libLiteRt.dll` we ship is the pre-built one shipped inside LiteRT-LM's
+submodule (`vendor/LiteRT-LM/prebuilt/<platform>/`). The LiteRT source
+submodule exists primarily so we can stage the LiteRT public C API
+headers (`litert/c/litert_*.h`) into `Source/ThirdParty/LiteRT/Public/`
+for UE consumers.
 
 ## Pinning: commit SHA, not release tag
 
-`LITERT_LM_TAG` holds a **40-character commit SHA**, not a release tag.
-LiteRT-LM is pre-1.0 (v0.10.x at time of writing); release cadence is
-slow and many fixes land between tags. Pinning to a SHA lets us pick up
-those fixes without waiting for a tag, while still being immutable and
-bisectable.
+Both `LITERT_TAG` and `LITERT_LM_TAG` hold **40-character commit SHAs**,
+not release tags. LiteRT-LM is pre-1.0; many fixes land between tags.
+Pinning to SHAs lets us pick those up without waiting, while staying
+immutable and bisectable.
 
-The file is named `LITERT_LM_TAG` for historical reasons — it accepted
-release tags in earlier revisions of this plugin. The semantics are now
-"the exact upstream commit this plugin's binaries were built against."
-
-`update-litert.ps1` accepts any git ref (tag, branch, full or short
-SHA) but always **writes the resolved 40-char SHA** to the file. So a
-moving ref like `main` is fine as input but never lands in the pin
-file as the literal string `main`.
+`LITERT_TAG` must always match the `LITERT_REF` value in
+`vendor/LiteRT-LM/WORKSPACE`. When you bump LiteRT-LM, also bump LiteRT
+to whatever LITERT_REF the new LiteRT-LM commit pins. They move
+together.
 
 ## One-time setup (new dev machine)
 
@@ -63,12 +82,12 @@ file as the literal string `main`.
 7. (Android only) Install Android NDK r28b or newer via Android Studio's
    SDK Manager. UE 5.7's NDK (r27.2) is too old for LiteRT-LM's Bazel
    config; the two NDKs coexist under `%LOCALAPPDATA%\Android\Sdk\ndk\`.
-8. Run `.\scripts\setup.ps1` to apply the overlay and verify the submodule.
+8. Run `.\scripts\setup.ps1` to apply the overlay and verify the LiteRT-LM submodule.
 
-## Building (Windows)
+## Building LiteRT-LM (Windows)
 
 ```powershell
-cd Plugins/ino_lite_rt_ue/LiteRtLm
+cd Plugins/ino_lite_rt_ue/LiteRT
 .\scripts\build-win64.ps1
 ```
 
@@ -84,10 +103,10 @@ Outputs are staged directly into the plugin:
 - `Plugins/ino_lite_rt_ue/Source/ThirdParty/LiteRTLM/Win64/LiteRtLm.lib`
 - `Plugins/ino_lite_rt_ue/Source/ThirdParty/LiteRTLM/Public/litert/lm/engine.h`
 
-## Building (Android arm64-v8a)
+## Building LiteRT-LM (Android arm64-v8a)
 
 ```powershell
-cd Plugins/ino_lite_rt_ue/LiteRtLm
+cd Plugins/ino_lite_rt_ue/LiteRT
 .\scripts\build-android-arm64.ps1
 ```
 
@@ -113,36 +132,48 @@ NOT pass that flag because upstream's `build:android` config sets
 `--dynamic_mode=off` which force-statics everything into one
 monolithic `libLiteRtLm.so`. There is no `libLiteRt.so` on Android.
 
-## Updating LiteRT-LM
+## Updating LiteRT-LM (and LiteRT along with it)
 
 ```powershell
-# Pin to a release tag (same syntax as before):
+# Pin to a release tag:
 .\scripts\update-litert.ps1 v0.11.0
 
 # Pin to an explicit commit SHA:
 .\scripts\update-litert.ps1 4dbbf9375f52ad9738b80c9c1a12d671a0f5ffb6
 
-# Pin to whatever's currently on main (resolves to the SHA at fetch time):
+# Pin to whatever's currently on main:
 .\scripts\update-litert.ps1 main
 ```
 
 The script:
-1. `git fetch --tags origin` inside the submodule
+1. `git fetch --tags origin` inside the LiteRT-LM submodule
 2. `git checkout <Ref>` — works for tags, SHAs, branches
 3. Resolves to a 40-char SHA via `git rev-parse HEAD`
 4. Writes the resolved SHA into `LITERT_LM_TAG`
 5. Re-runs `build-win64.ps1`
 
-**Caveat:** `update-litert.ps1` only rebuilds the Win64 artifacts.
-Android is intentionally a separate invocation — dev machines without
-an NDK installed can still bump the pin. After updating, run
-`build-android-arm64.ps1` separately to refresh Android binaries.
-Forgetting to do this means Win64 binaries from the new SHA + Android
-binaries from the old SHA, which usually crashes on launch with
-opaque dynamic-linker errors.
+**Manual step required after:** the script does not yet bump the LiteRT
+submodule. Open `vendor/LiteRT-LM/WORKSPACE`, find the new
+`LITERT_REF`, then:
 
-Commit the submodule pointer + `LITERT_LM_TAG` only after both builds
-succeed and UE actually loads the resulting DLLs/.so.
+```powershell
+git -C vendor/LiteRT checkout <new LITERT_REF>
+Set-Content LITERT_TAG "<new LITERT_REF>`n" -NoNewline:$false
+```
+
+Otherwise LiteRT's vendored source headers will drift from the LiteRT
+binary actually shipped by LiteRT-LM, and consumer code may compile
+against newer/older API surfaces than the DLL implements.
+
+**Caveat:** `update-litert.ps1` only rebuilds Win64. Android is a
+separate invocation — run `build-android-arm64.ps1` to refresh those
+binaries. Forgetting this means Win64 binaries from the new SHA +
+Android binaries from the old SHA, which usually crashes on launch
+with opaque dynamic-linker errors.
+
+Commit the submodule pointers + both `LITERT_TAG` files only after
+both platform builds succeed and UE actually loads the resulting
+DLLs/.so.
 
 ## Current target
 
@@ -159,10 +190,10 @@ DirectML, Vulkan, or Windows-NPU path — those are not shipped by
 upstream for Windows. NPU on Android (Qualcomm QNN / MediaTek) exists
 in the upstream source but is not currently wired through this build.
 
-## Do not edit files inside `vendor/LiteRT-LM/`
+## Do not edit files inside `vendor/`
 
-The submodule is upstream code. Our own customizations live in
-`overlay/` and are copied into the submodule at setup time.
+Both submodules are upstream code. Our own customizations live in
+`overlay/` and are copied into `vendor/LiteRT-LM/` at setup time.
 `setup.ps1` updates the submodule's `.git/info/exclude` so the overlay
 files don't show as dirty in the submodule's working tree.
 

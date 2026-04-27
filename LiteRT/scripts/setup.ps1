@@ -1,9 +1,9 @@
 # setup.ps1
 #
-# One-time setup for the LiteRtLm Bazel build workspace:
+# One-time setup for the LiteRT-LM Bazel build workspace:
 #   1. Verifies toolchain prerequisites (bazelisk, MSVC, BAZEL_VC, etc.)
 #   2. Ensures the LiteRT-LM submodule is initialized
-#   3. Copies LiteRtLm/overlay/* into vendor/LiteRT-LM/
+#   3. Copies LiteRT/overlay/* into vendor/LiteRT-LM/
 #   4. Updates the submodule's .git/info/exclude so overlay + bazel artifacts
 #      don't show as dirty
 #
@@ -11,15 +11,15 @@
 
 $ErrorActionPreference = "Stop"
 
-$ScriptDir   = Split-Path -Parent $MyInvocation.MyCommand.Path
-$LiteRtLmDir = (Resolve-Path (Join-Path $ScriptDir "..")).Path
-$OverlayDir  = Join-Path $LiteRtLmDir "overlay"
-$SubmoduleDir = Join-Path $LiteRtLmDir "vendor\LiteRT-LM"
-$PluginDir   = (Resolve-Path (Join-Path $LiteRtLmDir "..")).Path
+$ScriptDir    = Split-Path -Parent $MyInvocation.MyCommand.Path
+$WorkspaceDir = (Resolve-Path (Join-Path $ScriptDir "..")).Path
+$OverlayDir   = Join-Path $WorkspaceDir "overlay"
+$SubmoduleDir = Join-Path $WorkspaceDir "vendor\LiteRT-LM"
+$PluginDir    = (Resolve-Path (Join-Path $WorkspaceDir "..")).Path
 
-Write-Host "=== LiteRtLm setup ===" -ForegroundColor Cyan
+Write-Host "=== LiteRT-LM Bazel workspace setup ===" -ForegroundColor Cyan
 Write-Host "Plugin dir:    $PluginDir"
-Write-Host "LiteRtLm dir:  $LiteRtLmDir"
+Write-Host "Workspace dir: $WorkspaceDir"
 Write-Host "Submodule dir: $SubmoduleDir"
 Write-Host ""
 

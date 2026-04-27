@@ -24,8 +24,8 @@ param(
 $ErrorActionPreference = "Stop"
 
 $ScriptDir    = Split-Path -Parent $MyInvocation.MyCommand.Path
-$LiteRtLmDir  = (Resolve-Path (Join-Path $ScriptDir "..")).Path
-$SubmoduleDir = Join-Path $LiteRtLmDir "vendor\LiteRT-LM"
+$WorkspaceDir = (Resolve-Path (Join-Path $ScriptDir "..")).Path
+$SubmoduleDir = Join-Path $WorkspaceDir "vendor\LiteRT-LM"
 
 Write-Host "=== Updating LiteRT-LM to $Ref ===" -ForegroundColor Cyan
 
@@ -50,7 +50,7 @@ try {
 
 # Update the plain-text pin file. We always write the resolved SHA so the
 # pin is to an immutable commit, not a moving ref.
-Set-Content -Path (Join-Path $LiteRtLmDir "LITERT_LM_TAG") `
+Set-Content -Path (Join-Path $WorkspaceDir "LITERT_LM_TAG") `
             -Value "$newSha`n" -NoNewline:$false
 
 Write-Host ""
@@ -66,4 +66,4 @@ Write-Host "  1. Run build-android-arm64.ps1 to rebuild Android too (this script
 Write-Host "     only rebuilds Win64; Android is a separate invocation so dev"
 Write-Host "     machines without an NDK can still bump the pin)."
 Write-Host "  2. Verify the plugin still loads the new DLL in UE."
-Write-Host "  3. Commit:  git add LiteRtLm/vendor/LiteRT-LM LiteRtLm/LITERT_LM_TAG"
+Write-Host "  3. Commit:  git add LiteRT/vendor/LiteRT-LM LiteRT/LITERT_LM_TAG"

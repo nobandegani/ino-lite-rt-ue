@@ -9,9 +9,9 @@
 $ErrorActionPreference = "Stop"
 
 $ScriptDir    = Split-Path -Parent $MyInvocation.MyCommand.Path
-$LiteRtLmDir  = (Resolve-Path (Join-Path $ScriptDir "..")).Path
-$SubmoduleDir = Join-Path $LiteRtLmDir "vendor\LiteRT-LM"
-$PluginDir    = (Resolve-Path (Join-Path $LiteRtLmDir "..")).Path
+$WorkspaceDir = (Resolve-Path (Join-Path $ScriptDir "..")).Path
+$SubmoduleDir = Join-Path $WorkspaceDir "vendor\LiteRT-LM"
+$PluginDir    = (Resolve-Path (Join-Path $WorkspaceDir "..")).Path
 
 #---------------------------------------------------------------------
 # 1. Run setup

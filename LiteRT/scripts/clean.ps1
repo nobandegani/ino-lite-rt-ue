@@ -9,8 +9,8 @@
 $ErrorActionPreference = "Stop"
 
 $ScriptDir    = Split-Path -Parent $MyInvocation.MyCommand.Path
-$LiteRtLmDir  = (Resolve-Path (Join-Path $ScriptDir "..")).Path
-$SubmoduleDir = Join-Path $LiteRtLmDir "vendor\LiteRT-LM"
+$WorkspaceDir = (Resolve-Path (Join-Path $ScriptDir "..")).Path
+$SubmoduleDir = Join-Path $WorkspaceDir "vendor\LiteRT-LM"
 
 if (-not (Test-Path $SubmoduleDir)) {
     Write-Warning "Submodule not initialized: $SubmoduleDir"
