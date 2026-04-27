@@ -1,7 +1,7 @@
 # build-win64.ps1
 #
 # Build LiteRtLm.dll from source for Windows x64 and stage artifacts into the
-# InoAgents plugin.
+# ino_lite_rt_ue plugin.
 #
 # Runs scripts/setup.ps1 first (idempotent), then bazelisk build, then copies
 # the resulting DLL + import lib + headers into Source/ThirdParty and Binaries.
@@ -74,9 +74,9 @@ Write-Host ""
 Write-Host "=== Staging artifacts ===" -ForegroundColor Cyan
 
 $BazelBinIno = Join-Path $SubmoduleDir "bazel-bin\ino"
-$Win64BinDst = Join-Path $PluginDir "Binaries\ThirdParty\InoAgentsLibrary\Win64"
-$Win64LibDst = Join-Path $PluginDir "Source\ThirdParty\InoAgentsLibrary\Win64"
-$PublicIncDst = Join-Path $PluginDir "Source\ThirdParty\InoAgentsLibrary\Public\litert\lm"
+$Win64BinDst = Join-Path $PluginDir "Binaries\ThirdParty\LiteRTLM\Win64"
+$Win64LibDst = Join-Path $PluginDir "Source\ThirdParty\LiteRTLM\Win64"
+$PublicIncDst = Join-Path $PluginDir "Source\ThirdParty\LiteRTLM\Public\litert\lm"
 
 foreach ($d in @($Win64BinDst, $Win64LibDst, $PublicIncDst)) {
     if (-not (Test-Path $d)) {

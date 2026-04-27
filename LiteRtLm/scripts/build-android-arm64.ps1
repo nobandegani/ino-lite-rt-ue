@@ -1,7 +1,7 @@
 # build-android-arm64.ps1
 #
 # Build libLiteRtLm.so from source for Android arm64-v8a and stage artifacts
-# into the InoAgents plugin.
+# into the ino_lite_rt_ue plugin.
 #
 # Runs scripts/setup.ps1 first (idempotent), then bazelisk build with
 # --config=android_arm64, then copies the resulting .so + prebuilt GPU .so
@@ -194,9 +194,9 @@ Write-Host ""
 Write-Host "=== Staging artifacts ===" -ForegroundColor Cyan
 
 $BazelBinIno      = Join-Path $SubmoduleDir "bazel-bin\ino"
-$Arm64BinDst      = Join-Path $PluginDir "Binaries\ThirdParty\InoAgentsLibrary\Android\arm64-v8a"
-$Arm64LibDst      = Join-Path $PluginDir "Source\ThirdParty\InoAgentsLibrary\Android\arm64-v8a"
-$PublicIncDst     = Join-Path $PluginDir "Source\ThirdParty\InoAgentsLibrary\Public\litert\lm"
+$Arm64BinDst      = Join-Path $PluginDir "Binaries\ThirdParty\LiteRTLM\Android\arm64-v8a"
+$Arm64LibDst      = Join-Path $PluginDir "Source\ThirdParty\LiteRTLM\Android\arm64-v8a"
+$PublicIncDst     = Join-Path $PluginDir "Source\ThirdParty\LiteRTLM\Public\litert\lm"
 $PrebuiltAndroid  = Join-Path $SubmoduleDir "prebuilt\android_arm64"
 
 foreach ($d in @($Arm64BinDst, $Arm64LibDst, $PublicIncDst)) {

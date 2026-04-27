@@ -1,12 +1,12 @@
 # Copyright 2026 Inoland. Licensed under the Apache License 2.0.
 #
-# InoAgents custom Bazel target: produces LiteRtLm.dll for consumption by the
-# InoAgents Unreal Engine plugin.
+# ino_lite_rt_ue custom Bazel target: produces LiteRtLm.dll for consumption
+# by the ino_lite_rt_ue Unreal Engine plugin.
 #
 # This file is staged into LiteRT-LM's source tree by
-#   Plugins/InoAgents/LiteRtLm/scripts/setup.ps1
+#   Plugins/ino_lite_rt_ue/LiteRtLm/scripts/setup.ps1
 # from its canonical location at
-#   Plugins/InoAgents/LiteRtLm/overlay/ino/BUILD.bazel
+#   Plugins/ino_lite_rt_ue/LiteRtLm/overlay/ino/BUILD.bazel
 #
 # Do not edit the copy inside the submodule — edit the overlay source instead.
 #
