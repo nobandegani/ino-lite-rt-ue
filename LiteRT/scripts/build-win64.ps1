@@ -103,47 +103,85 @@ foreach ($d in @($Win64Dst, $LiteRtHdrDst, $LiteRtIntHdrDst, $LiteRtLmHdrDst)) {
 #
 # We don't build LiteRT from source. Instead we ship the prebuilt
 # libLiteRt.dll from LiteRT-LM's submodule and synthesize the matching
-# import library from windows_exported_symbols.def in the LiteRT submodule.
-# A .lib generated this way contains pure import stubs that bind
-# consumer code to libLiteRt.dll at link time — exactly what UE needs.
+# import library from the DLL's actual export table.
+#
+# We INTENTIONALLY do not use vendor/LiteRT/litert/c/windows_exported_symbols.def
+# for this — that file is a curated subset (~230 symbols) maintained by Google
+# for their internal binaries' link needs, not the full DLL surface
+# (~424 symbols). Generating an import lib from the DLL's exports directly
+# guarantees consumer code can link against everything the DLL provides.
 $LiteRtPrebuiltDll = Join-Path $LiteRtLmSubDir "prebuilt\windows_x86_64\libLiteRt.dll"
 if (-not (Test-Path $LiteRtPrebuiltDll)) {
     throw "Expected prebuilt libLiteRt.dll not found at $LiteRtPrebuiltDll"
 }
-Copy-Item -Path $LiteRtPrebuiltDll -Destination (Join-Path $Win64Dst "libLiteRt.dll") -Force
+$StagedLiteRtDll = Join-Path $Win64Dst "libLiteRt.dll"
+Copy-Item -Path $LiteRtPrebuiltDll -Destination $StagedLiteRtDll -Force
 Write-Host "  [STAGE] libLiteRt.dll (prebuilt)      -> $Win64Dst"
 
-# Locate lib.exe under MSVC. BAZEL_VC points at <VS install>/VC; the actual
-# tool lives under Tools/MSVC/<version>/bin/Hostx64/x64/lib.exe. Multiple MSVC
+# Locate lib.exe and dumpbin.exe under MSVC. BAZEL_VC points at <VS install>/VC;
+# both tools live under Tools/MSVC/<version>/bin/Hostx64/x64/. Multiple MSVC
 # versions can coexist — pick the newest one.
 if (-not $env:BAZEL_VC) {
     throw "BAZEL_VC not set — required to locate lib.exe. See setup.ps1 preflight."
 }
 $MsvcRoot = Join-Path $env:BAZEL_VC "Tools\MSVC"
-$LibExe = $null
+$MsvcBinDir = $null
 Get-ChildItem -Path $MsvcRoot -Directory -ErrorAction SilentlyContinue |
     Sort-Object @{Expression = {[version]$_.Name}} -Descending |
     ForEach-Object {
-        $candidate = Join-Path $_.FullName "bin\Hostx64\x64\lib.exe"
-        if ((-not $LibExe) -and (Test-Path $candidate)) { $script:LibExe = $candidate }
+        $candidate = Join-Path $_.FullName "bin\Hostx64\x64"
+        if ((-not $MsvcBinDir) -and (Test-Path (Join-Path $candidate "lib.exe"))) {
+            $script:MsvcBinDir = $candidate
+        }
     }
-if (-not $LibExe) {
-    throw "lib.exe not found under $MsvcRoot. Is the MSVC C++ workload installed?"
+if (-not $MsvcBinDir) {
+    throw "MSVC bin\Hostx64\x64 not found under $MsvcRoot. Is the C++ workload installed?"
+}
+$LibExe = Join-Path $MsvcBinDir "lib.exe"
+$DumpbinExe = Join-Path $MsvcBinDir "dumpbin.exe"
+if (-not (Test-Path $DumpbinExe)) {
+    throw "dumpbin.exe not found at $DumpbinExe"
 }
 
-$LiteRtDef = Join-Path $LiteRtSubDir "litert\c\windows_exported_symbols.def"
-if (-not (Test-Path $LiteRtDef)) {
-    throw "Expected $LiteRtDef not found (LiteRT submodule corrupt?)"
+# Extract every export from the DLL using dumpbin. The output table looks like:
+#     ordinal hint RVA      name
+#           1    0 00027400 LiteRtAddCustomOpKernelOption
+#           2    1 00027410 LiteRtAddEnvironmentOptions
+#           ...
+# Match lines with "<digits> <hex> <hex> <name>" and capture column 4.
+Write-Host "  Reading exports from libLiteRt.dll via dumpbin..."
+$dumpOut = & $DumpbinExe /exports $StagedLiteRtDll 2>&1
+if ($LASTEXITCODE -ne 0) {
+    throw "dumpbin failed reading exports (exit code $LASTEXITCODE)"
 }
+$dllExports = @()
+foreach ($line in $dumpOut) {
+    if ($line -match '^\s+\d+\s+[0-9A-Fa-f]+\s+[0-9A-Fa-f]+\s+(\S+)\s*$') {
+        $dllExports += $Matches[1]
+    }
+}
+if ($dllExports.Count -eq 0) {
+    throw "dumpbin produced no exports — output unexpected, can't generate .lib"
+}
+Write-Host "  Found $($dllExports.Count) exports"
+
+# Write a complete .def to the intermediate dir, then run lib.exe against it.
+$IntermediateDir = Join-Path $PluginDir "Intermediate\LiteRT"
+if (-not (Test-Path $IntermediateDir)) {
+    New-Item -ItemType Directory -Path $IntermediateDir -Force | Out-Null
+}
+$FullDefFile = Join-Path $IntermediateDir "libLiteRt_full.def"
+$defLines = @("EXPORTS") + ($dllExports | ForEach-Object { "  $_" })
+Set-Content -Path $FullDefFile -Value $defLines -Encoding ASCII
 
 $LiteRtLib = Join-Path $Win64Dst "libLiteRt.lib"
-# /name: tells lib.exe which DLL the import records bind to (the .def file
-# has no LIBRARY directive). /machine:x64 matches our DLL's architecture.
-& $LibExe "/def:$LiteRtDef" "/name:libLiteRt.dll" "/machine:x64" "/out:$LiteRtLib"
+# /name: tells lib.exe which DLL the import records bind to (our .def has no
+# LIBRARY directive). /machine:x64 matches our DLL's architecture.
+& $LibExe "/def:$FullDefFile" "/name:libLiteRt.dll" "/machine:x64" "/out:$LiteRtLib"
 if ($LASTEXITCODE -ne 0) {
     throw "lib.exe failed generating libLiteRt.lib (exit code $LASTEXITCODE)"
 }
-Write-Host "  [STAGE] libLiteRt.lib (synthesized from .def) -> $Win64Dst"
+Write-Host "  [STAGE] libLiteRt.lib ($($dllExports.Count) imports synthesized from DLL exports) -> $Win64Dst"
 
 # --- LiteRT-LM outputs ---
 $LiteRtLmBazelBin = Join-Path $LiteRtLmSubDir "bazel-bin\ino"
