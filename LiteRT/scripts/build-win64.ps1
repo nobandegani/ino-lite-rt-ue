@@ -2,7 +2,7 @@
 #
 # Build LiteRT and LiteRT-LM from source for Windows x64 and stage all
 # artifacts into the ino_lite_rt_ue plugin under
-# Source/ThirdParty/LiteRT/{Win64,Public}.
+# Source/ThirdParty/{Win64,Public}.
 #
 # Step order:
 #   1. setup.ps1                              (preflight + overlay)
