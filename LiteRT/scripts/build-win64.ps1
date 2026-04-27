@@ -1,14 +1,19 @@
 # build-win64.ps1
 #
-# Build LiteRT and LiteRT-LM from source for Windows x64 and stage all
-# artifacts into the ino_lite_rt_ue plugin under
-# Source/ThirdParty/{Win64,Public}.
+# Build LiteRT-LM from source for Windows x64 and stage all artifacts into
+# the ino_lite_rt_ue plugin under Source/ThirdParty/{Win64,Public}.
+#
+# LiteRT itself is NOT built from source — we use the prebuilt libLiteRt.dll
+# Google ships inside the LiteRT-LM submodule (prebuilt/windows_x86_64/) and
+# generate the matching libLiteRt.lib import library from the .def file in
+# the LiteRT submodule via lib.exe. That skips a 30+ minute Bazel build for
+# zero loss in the public C API surface (exports are identical to a
+# from-source build).
 #
 # Step order:
 #   1. setup.ps1                              (preflight + overlay)
-#   2. bazelisk build //litert/c:libLiteRt    (in vendor/LiteRT)
-#   3. bazelisk build //ino:LiteRtLm          (in vendor/LiteRT-LM)
-#   4. Stage everything to Source/ThirdParty/LiteRT/
+#   2. bazelisk build //ino:LiteRtLm          (in vendor/LiteRT-LM)
+#   3. Stage everything to Source/ThirdParty/
 
 $ErrorActionPreference = "Stop"
 
@@ -24,44 +29,8 @@ $PluginDir       = (Resolve-Path (Join-Path $WorkspaceDir "..")).Path
 & (Join-Path $ScriptDir "setup.ps1")
 if ($LASTEXITCODE -ne 0) { throw "setup.ps1 failed" }
 
-# Clear ANDROID_NDK_HOME for both child Bazel processes (does not touch user env)
-$env:ANDROID_NDK_HOME = ""
-
 #---------------------------------------------------------------------
-# 2. Build LiteRT  (//litert/c:libLiteRt)
-#---------------------------------------------------------------------
-# Separate output base / disk cache from LiteRT-LM — different Bazel
-# workspace, can't share state.
-$LiteRtOutputBase = "C:/b/ino-litert"
-$LiteRtDiskCache  = "C:/b/ino-litert-cache"
-
-if (-not (Test-Path $LiteRtOutputBase)) {
-    New-Item -ItemType Directory -Path $LiteRtOutputBase -Force | Out-Null
-}
-
-Write-Host ""
-Write-Host "=== Bazel build: LiteRT ===" -ForegroundColor Cyan
-Write-Host "Working dir:  $LiteRtSubDir"
-Write-Host "Output base:  $LiteRtOutputBase"
-Write-Host "Disk cache:   $LiteRtDiskCache"
-Write-Host "Target:       //litert/c:libLiteRt"
-Write-Host ""
-
-Push-Location $LiteRtSubDir
-try {
-    & bazelisk --output_base=$LiteRtOutputBase `
-        build //litert/c:libLiteRt `
-        --disk_cache=$LiteRtDiskCache `
-        --verbose_failures
-    if ($LASTEXITCODE -ne 0) {
-        throw "LiteRT bazelisk build failed (exit code $LASTEXITCODE)"
-    }
-} finally {
-    Pop-Location
-}
-
-#---------------------------------------------------------------------
-# 3. Build LiteRT-LM  (//ino:LiteRtLm)
+# 2. Bazel build LiteRT-LM  (//ino:LiteRtLm)
 #---------------------------------------------------------------------
 # Match upstream CI (.github/workflows/ci-build-win.yml:117) as closely as
 # possible:
@@ -74,6 +43,9 @@ try {
 #     config on Windows. Passing it ourselves causes duplicate-expansion warnings.
 #   - --build_tag_filters=-nowindows to exclude any targets upstream marks as
 #     non-Windows (parity with upstream CI's behavior)
+#   - Clear ANDROID_NDK_HOME for the invocation — upstream's CI does this to
+#     avoid androidndk rules trying to create symlinks in a host NDK install.
+#     Only affects this child process; user's global env is untouched.
 
 $LiteRtLmOutputBase = "C:/b/ino-litert-lm"
 $LiteRtLmDiskCache  = "C:/b/ino-litert-lm-cache"
@@ -85,6 +57,9 @@ Write-Host "Output base:  $LiteRtLmOutputBase"
 Write-Host "Disk cache:   $LiteRtLmDiskCache"
 Write-Host "Target:       //ino:LiteRtLm"
 Write-Host ""
+
+# Clear ANDROID_NDK_HOME for this child process only (does not touch user env)
+$env:ANDROID_NDK_HOME = ""
 
 Push-Location $LiteRtLmSubDir
 try {
@@ -103,9 +78,9 @@ try {
 }
 
 #---------------------------------------------------------------------
-# 4. Stage all artifacts into Source/ThirdParty/
+# 3. Stage all artifacts into Source/ThirdParty/
 #---------------------------------------------------------------------
-# Single destination tree for all artifacts from both builds:
+# Single destination tree for all artifacts:
 #   Source/ThirdParty/Win64/                  All DLLs + import libs
 #   Source/ThirdParty/Public/litert/c/         LiteRT C API headers
 #   Source/ThirdParty/Public/litert/c/internal/  internal headers
@@ -124,32 +99,51 @@ foreach ($d in @($Win64Dst, $LiteRtHdrDst, $LiteRtIntHdrDst, $LiteRtLmHdrDst)) {
     }
 }
 
-# --- LiteRT outputs (we built libLiteRt.dll ourselves; ignore the prebuilt) ---
-$LiteRtBazelBin = Join-Path $LiteRtSubDir "bazel-bin\litert\c"
+# --- LiteRT: copy prebuilt DLL + generate matching .lib via lib.exe ---
+#
+# We don't build LiteRT from source. Instead we ship the prebuilt
+# libLiteRt.dll from LiteRT-LM's submodule and synthesize the matching
+# import library from windows_exported_symbols.def in the LiteRT submodule.
+# A .lib generated this way contains pure import stubs that bind
+# consumer code to libLiteRt.dll at link time — exactly what UE needs.
+$LiteRtPrebuiltDll = Join-Path $LiteRtLmSubDir "prebuilt\windows_x86_64\libLiteRt.dll"
+if (-not (Test-Path $LiteRtPrebuiltDll)) {
+    throw "Expected prebuilt libLiteRt.dll not found at $LiteRtPrebuiltDll"
+}
+Copy-Item -Path $LiteRtPrebuiltDll -Destination (Join-Path $Win64Dst "libLiteRt.dll") -Force
+Write-Host "  [STAGE] libLiteRt.dll (prebuilt)      -> $Win64Dst"
 
-$liteRtDll = Join-Path $LiteRtBazelBin "libLiteRt.dll"
-if (-not (Test-Path $liteRtDll)) {
-    Write-Warning "Expected libLiteRt.dll not at $liteRtDll. Listing bazel-bin/litert/c:"
-    Get-ChildItem $LiteRtBazelBin 2>$null | ForEach-Object { Write-Host "  $($_.Name)" }
-    throw "libLiteRt.dll not produced by Bazel"
+# Locate lib.exe under MSVC. BAZEL_VC points at <VS install>/VC; the actual
+# tool lives under Tools/MSVC/<version>/bin/Hostx64/x64/lib.exe. Multiple MSVC
+# versions can coexist — pick the newest one.
+if (-not $env:BAZEL_VC) {
+    throw "BAZEL_VC not set — required to locate lib.exe. See setup.ps1 preflight."
 }
-Copy-Item -Path $liteRtDll -Destination (Join-Path $Win64Dst "libLiteRt.dll") -Force
-Write-Host "  [STAGE] libLiteRt.dll (from-source)  -> $Win64Dst"
+$MsvcRoot = Join-Path $env:BAZEL_VC "Tools\MSVC"
+$LibExe = $null
+Get-ChildItem -Path $MsvcRoot -Directory -ErrorAction SilentlyContinue |
+    Sort-Object @{Expression = {[version]$_.Name}} -Descending |
+    ForEach-Object {
+        $candidate = Join-Path $_.FullName "bin\Hostx64\x64\lib.exe"
+        if ((-not $LibExe) -and (Test-Path $candidate)) { $script:LibExe = $candidate }
+    }
+if (-not $LibExe) {
+    throw "lib.exe not found under $MsvcRoot. Is the MSVC C++ workload installed?"
+}
 
-# Import library — Bazel can name it differently depending on toolchain
-$liteRtLibCandidates = @("libLiteRt.if.lib", "libLiteRt.dll.if.lib", "libLiteRt.lib")
-$liteRtLibSrc = $null
-foreach ($c in $liteRtLibCandidates) {
-    $p = Join-Path $LiteRtBazelBin $c
-    if (Test-Path $p) { $liteRtLibSrc = $p; break }
+$LiteRtDef = Join-Path $LiteRtSubDir "litert\c\windows_exported_symbols.def"
+if (-not (Test-Path $LiteRtDef)) {
+    throw "Expected $LiteRtDef not found (LiteRT submodule corrupt?)"
 }
-if (-not $liteRtLibSrc) {
-    Write-Warning "libLiteRt import lib not found under any expected name in $LiteRtBazelBin"
-    Get-ChildItem $LiteRtBazelBin | ForEach-Object { Write-Host "  $($_.Name)" }
-} else {
-    Copy-Item -Path $liteRtLibSrc -Destination (Join-Path $Win64Dst "libLiteRt.lib") -Force
-    Write-Host "  [STAGE] $(Split-Path $liteRtLibSrc -Leaf) -> $Win64Dst\libLiteRt.lib"
+
+$LiteRtLib = Join-Path $Win64Dst "libLiteRt.lib"
+# /name: tells lib.exe which DLL the import records bind to (the .def file
+# has no LIBRARY directive). /machine:x64 matches our DLL's architecture.
+& $LibExe "/def:$LiteRtDef" "/name:libLiteRt.dll" "/machine:x64" "/out:$LiteRtLib"
+if ($LASTEXITCODE -ne 0) {
+    throw "lib.exe failed generating libLiteRt.lib (exit code $LASTEXITCODE)"
 }
+Write-Host "  [STAGE] libLiteRt.lib (synthesized from .def) -> $Win64Dst"
 
 # --- LiteRT-LM outputs ---
 $LiteRtLmBazelBin = Join-Path $LiteRtLmSubDir "bazel-bin\ino"
@@ -164,7 +158,7 @@ if (-not (Test-Path $dllSrc)) {
 Copy-Item -Path $dllSrc -Destination (Join-Path $Win64Dst "LiteRtLm.dll") -Force
 Write-Host "  [STAGE] LiteRtLm.dll                  -> $Win64Dst"
 
-# LiteRtLm import lib
+# LiteRtLm import lib (Bazel may name it .if.lib, .dll.if.lib, or .lib)
 $lmLibCandidates = @("LiteRtLm.if.lib", "LiteRtLm.dll.if.lib", "LiteRtLm.lib")
 $lmLibSrc = $null
 foreach ($c in $lmLibCandidates) {
@@ -189,9 +183,7 @@ if (Test-Path $gemmaSrc) {
     throw "libGemmaModelConstraintProvider.dll not found at $gemmaSrc"
 }
 
-# GPU accelerator prebuilt DLLs from LiteRT-LM submodule (we deliberately
-# do NOT copy libLiteRt.dll from prebuilt/ — we use the one we just built
-# above from the LiteRT submodule).
+# GPU accelerator prebuilt DLLs from LiteRT-LM submodule.
 $LiteRtLmPrebuilt = Join-Path $LiteRtLmSubDir "prebuilt\windows_x86_64"
 $AcceleratorDlls = @(
     "libLiteRtWebGpuAccelerator.dll",

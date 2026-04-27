@@ -1,44 +1,37 @@
 # clean.ps1
 #
-# Wipe the Bazel build cache for both build workspaces. Use when you want
+# Wipe the Bazel build cache for the LiteRT-LM workspace. Use when you want
 # to force a full cold rebuild (e.g. after tooling changes, corrupted cache).
 #
-# Runs 'bazelisk clean --expunge' inside both submodules, where the
+# Runs 'bazelisk clean --expunge' inside vendor/LiteRT-LM/, where the
 # bazel-* symlinks and output artifacts actually live.
+#
+# (LiteRT itself is not built from source — its libLiteRt.dll comes from
+# LiteRT-LM's prebuilt and the matching .lib is synthesized via lib.exe.
+# So there's no LiteRT Bazel cache to clean.)
 
 $ErrorActionPreference = "Stop"
 
 $ScriptDir    = Split-Path -Parent $MyInvocation.MyCommand.Path
 $WorkspaceDir = (Resolve-Path (Join-Path $ScriptDir "..")).Path
+$SubmoduleDir = Join-Path $WorkspaceDir "vendor\LiteRT-LM"
 
-$Workspaces = @(
-    @{ Name = "LiteRT-LM"; Submodule = "vendor\LiteRT-LM"; OutputBase = "C:/b/ino-litert-lm" }
-    @{ Name = "LiteRT";    Submodule = "vendor\LiteRT";    OutputBase = "C:/b/ino-litert" }
-)
-
-foreach ($ws in $Workspaces) {
-    $submoduleDir = Join-Path $WorkspaceDir $ws.Submodule
-
-    Write-Host ""
-    Write-Host "=== Cleaning $($ws.Name) ===" -ForegroundColor Cyan
-
-    if (-not (Test-Path $submoduleDir)) {
-        Write-Warning "Submodule not initialized: $submoduleDir (skipping)"
-        continue
-    }
-
-    Push-Location $submoduleDir
-    try {
-        Write-Host "Running 'bazelisk --output_base=$($ws.OutputBase) clean --expunge'..." `
-                   -ForegroundColor Yellow
-        & bazelisk --output_base=$ws.OutputBase clean --expunge
-        if ($LASTEXITCODE -ne 0) {
-            throw "$($ws.Name) bazelisk clean failed (exit code $LASTEXITCODE)"
-        }
-    } finally {
-        Pop-Location
-    }
+if (-not (Test-Path $SubmoduleDir)) {
+    Write-Warning "Submodule not initialized: $SubmoduleDir"
+    exit 0
 }
 
-Write-Host ""
+$BazelOutputBase = "C:/b/ino-litert-lm"
+
+Push-Location $SubmoduleDir
+try {
+    Write-Host "Running 'bazelisk --output_base=$BazelOutputBase clean --expunge'..." -ForegroundColor Yellow
+    & bazelisk --output_base=$BazelOutputBase clean --expunge
+    if ($LASTEXITCODE -ne 0) {
+        throw "bazelisk clean failed (exit code $LASTEXITCODE)"
+    }
+} finally {
+    Pop-Location
+}
+
 Write-Host "=== Clean complete ===" -ForegroundColor Green

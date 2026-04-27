@@ -85,20 +85,20 @@ try {
     Write-Warning "Could not read long paths registry key"
 }
 
-# Short Bazel output bases: Windows MAX_PATH is 260 chars and MSVC link.exe
+# Short Bazel output base: Windows MAX_PATH is 260 chars and MSVC link.exe
 # does not transparently use the \\?\ prefix for its input files. LiteRT-LM's
 # Rust proc-macro intermediate .rcgu.o filenames alone consume ~220 chars,
-# so path prefixes must be short. Upstream CI uses D:/w-<hash>/; we use
-# C:/b/ino-litert-lm/ and C:/b/ino-litert/ — one per Bazel workspace.
-$OutputBases = @("C:/b/ino-litert-lm", "C:/b/ino-litert")
-foreach ($base in $OutputBases) {
-    if (-not (Test-Path $base)) {
-        try {
-            New-Item -ItemType Directory -Path $base -Force -ErrorAction Stop | Out-Null
-            Write-Host "  [OK] Created Bazel output base: $base"
-        } catch {
-            Write-Error @"
-Could not create '$base': $($_.Exception.Message)
+# so the path prefix must be short. Upstream CI uses D:/w-<hash>/; we use
+# C:/b/ino-litert-lm/. (Only one base now — LiteRT itself isn't built from
+# source, see build-win64.ps1.)
+$OutputBase = "C:/b/ino-litert-lm"
+if (-not (Test-Path $OutputBase)) {
+    try {
+        New-Item -ItemType Directory -Path $OutputBase -Force -ErrorAction Stop | Out-Null
+        Write-Host "  [OK] Created Bazel output base: $OutputBase"
+    } catch {
+        Write-Error @"
+Could not create '$OutputBase': $($_.Exception.Message)
 
 This directory is required to keep Bazel's execution root path short
 (Windows MAX_PATH). Create it once, then rerun:
@@ -111,10 +111,9 @@ The first command creates C:\b. The second grants the built-in 'Users' group
 Modify rights with inheritance, so subsequent builds run as your normal
 (non-admin) user.
 "@
-        }
-    } else {
-        Write-Host "  [OK] Bazel output base exists: $base"
     }
+} else {
+    Write-Host "  [OK] Bazel output base exists: $OutputBase"
 }
 
 Write-Host ""
