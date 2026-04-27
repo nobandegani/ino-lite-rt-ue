@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
 
-InoAgents plugin — Unreal Plugin Language (UPL) file for Android packaging.
+ino_lite_rt_ue plugin — Unreal Plugin Language (UPL) file for Android packaging.
 
-Referenced from InoAgentsLibrary.Build.cs via
+Referenced from LiteRT.Build.cs via
     AdditionalPropertiesForReceipt.Add("AndroidPlugin", "<this file>")
 
 UPL has two distinct concerns that are easy to confuse:
@@ -22,22 +22,28 @@ Both are required for libraries we want Android to preload. The GPU
 accelerator .so files only need (2) because the LiteRT engine dlopens
 them on demand.
 
-Path variables for UPL loaded from a ThirdParty module (NOT plugin root):
+Path variables:
 
-  $S(AbsPluginDir)   — the MODULE directory, i.e. the directory
-                       containing this XML file:
-                       Plugins/InoAgents/Source/ThirdParty/InoAgentsLibrary/
-                       (despite the "Plugin" in the name — this is
-                       how UE's UPL engine names it)
+  $S(AbsPluginDir)   — the directory containing this XML file:
+                       Plugins/ino_lite_rt_ue/Source/ino_lite_rt_ue/
+                       (despite "Plugin" in the name — this is how
+                        UE's UPL engine names it; for an XML loaded
+                        from a module's Build.cs it resolves to the
+                        module's directory)
   $S(BuildDir)       — Intermediate/Android/<arch>/gradle/app/src/main/
   $S(Architecture)   — arm64-v8a, etc.
 
-Our .so files live at
-    Plugins/InoAgents/Binaries/ThirdParty/InoAgentsLibrary/Android/arm64-v8a/
-which is 3 levels up from $S(AbsPluginDir), then down through Binaries.
+Our .so files live (or will live) at
+    Plugins/ino_lite_rt_ue/Source/ThirdParty/Android/arm64-v8a/
+which is one dir up + over from $S(AbsPluginDir) = Source/ino_lite_rt_ue/.
 
 IMPORTANT: $S(PluginDir) (non-Abs) does NOT exist — using it produces
 an empty string and silently breaks the copy. Always use $S(AbsPluginDir).
+
+NOTE: The Android build script (LiteRT/scripts/build-android-arm64.ps1)
+has not yet been updated to stage into Source/ThirdParty/Android/. Until
+that's fixed, the <copyFile> directives below will fail with "source
+file not found". Win64 packaging is unaffected.
 
 Docs: https://docs.unrealengine.com/en-US/Sharing/Reference/UnrealPluginLanguage/
 
@@ -54,14 +60,14 @@ Docs: https://docs.unrealengine.com/en-US/Sharing/Reference/UnrealPluginLanguage
 	.so files into a different arch's build dir.
 	-->
 	<init>
-		<log text="InoAgents UPL init"/>
+		<log text="ino_lite_rt_ue UPL init"/>
 		<setBool result="bSupported" value="false"/>
 		<isArch arch="arm64-v8a">
 			<setBool result="bSupported" value="true"/>
 		</isArch>
 		<if condition="bSupported">
 			<false>
-				<log text="InoAgents: unsupported architecture $S(Architecture), skipping native lib staging"/>
+				<log text="ino_lite_rt_ue: unsupported architecture $S(Architecture), skipping native lib staging"/>
 			</false>
 		</if>
 	</init>
@@ -93,51 +99,51 @@ Docs: https://docs.unrealengine.com/en-US/Sharing/Reference/UnrealPluginLanguage
 	directory. ALL of our native libraries must be listed here,
 	including libLiteRtLm.so and libGemmaModelConstraintProvider.so.
 
-	Source paths use $S(AbsPluginDir)/../../../Binaries/... because
-	$S(AbsPluginDir) resolves to the MODULE directory
-	(Plugins/InoAgents/Source/ThirdParty/InoAgentsLibrary/), and our
-	.so files are 3 dirs up and across under the plugin's Binaries.
+	Source paths use $S(AbsPluginDir)/../ThirdParty/Android/... because
+	$S(AbsPluginDir) resolves to the module directory
+	(Plugins/ino_lite_rt_ue/Source/ino_lite_rt_ue/), and our .so files
+	are one dir up + over under Source/ThirdParty/Android/.
 
 	<log> lines print to the packaging log so we can verify each copy
-	actually ran. Look for "InoAgents: copied <name>" in the output.
+	actually ran. Look for "ino_lite_rt_ue: copied <name>" in the output.
 	-->
 	<resourceCopies>
 		<if condition="bSupported">
 			<true>
 				<copyFile
-					src="$S(AbsPluginDir)/../../../Binaries/ThirdParty/InoAgentsLibrary/Android/$S(Architecture)/libLiteRtLm.so"
+					src="$S(AbsPluginDir)/../ThirdParty/Android/$S(Architecture)/libLiteRtLm.so"
 					dst="$S(BuildDir)/libs/$S(Architecture)/libLiteRtLm.so"/>
-				<log text="InoAgents: copied libLiteRtLm.so"/>
+				<log text="ino_lite_rt_ue: copied libLiteRtLm.so"/>
 
 				<copyFile
-					src="$S(AbsPluginDir)/../../../Binaries/ThirdParty/InoAgentsLibrary/Android/$S(Architecture)/libGemmaModelConstraintProvider.so"
+					src="$S(AbsPluginDir)/../ThirdParty/Android/$S(Architecture)/libGemmaModelConstraintProvider.so"
 					dst="$S(BuildDir)/libs/$S(Architecture)/libGemmaModelConstraintProvider.so"/>
-				<log text="InoAgents: copied libGemmaModelConstraintProvider.so"/>
+				<log text="ino_lite_rt_ue: copied libGemmaModelConstraintProvider.so"/>
 
 				<copyFile
-					src="$S(AbsPluginDir)/../../../Binaries/ThirdParty/InoAgentsLibrary/Android/$S(Architecture)/libLiteRtGpuAccelerator.so"
+					src="$S(AbsPluginDir)/../ThirdParty/Android/$S(Architecture)/libLiteRtGpuAccelerator.so"
 					dst="$S(BuildDir)/libs/$S(Architecture)/libLiteRtGpuAccelerator.so"/>
-				<log text="InoAgents: copied libLiteRtGpuAccelerator.so"/>
+				<log text="ino_lite_rt_ue: copied libLiteRtGpuAccelerator.so"/>
 
 				<copyFile
-					src="$S(AbsPluginDir)/../../../Binaries/ThirdParty/InoAgentsLibrary/Android/$S(Architecture)/libLiteRtOpenClAccelerator.so"
+					src="$S(AbsPluginDir)/../ThirdParty/Android/$S(Architecture)/libLiteRtOpenClAccelerator.so"
 					dst="$S(BuildDir)/libs/$S(Architecture)/libLiteRtOpenClAccelerator.so"/>
-				<log text="InoAgents: copied libLiteRtOpenClAccelerator.so"/>
+				<log text="ino_lite_rt_ue: copied libLiteRtOpenClAccelerator.so"/>
 
 				<copyFile
-					src="$S(AbsPluginDir)/../../../Binaries/ThirdParty/InoAgentsLibrary/Android/$S(Architecture)/libLiteRtTopKOpenClSampler.so"
+					src="$S(AbsPluginDir)/../ThirdParty/Android/$S(Architecture)/libLiteRtTopKOpenClSampler.so"
 					dst="$S(BuildDir)/libs/$S(Architecture)/libLiteRtTopKOpenClSampler.so"/>
-				<log text="InoAgents: copied libLiteRtTopKOpenClSampler.so"/>
+				<log text="ino_lite_rt_ue: copied libLiteRtTopKOpenClSampler.so"/>
 
 				<copyFile
-					src="$S(AbsPluginDir)/../../../Binaries/ThirdParty/InoAgentsLibrary/Android/$S(Architecture)/libLiteRtTopKWebGpuSampler.so"
+					src="$S(AbsPluginDir)/../ThirdParty/Android/$S(Architecture)/libLiteRtTopKWebGpuSampler.so"
 					dst="$S(BuildDir)/libs/$S(Architecture)/libLiteRtTopKWebGpuSampler.so"/>
-				<log text="InoAgents: copied libLiteRtTopKWebGpuSampler.so"/>
+				<log text="ino_lite_rt_ue: copied libLiteRtTopKWebGpuSampler.so"/>
 
 				<copyFile
-					src="$S(AbsPluginDir)/../../../Binaries/ThirdParty/InoAgentsLibrary/Android/$S(Architecture)/libLiteRtWebGpuAccelerator.so"
+					src="$S(AbsPluginDir)/../ThirdParty/Android/$S(Architecture)/libLiteRtWebGpuAccelerator.so"
 					dst="$S(BuildDir)/libs/$S(Architecture)/libLiteRtWebGpuAccelerator.so"/>
-				<log text="InoAgents: copied libLiteRtWebGpuAccelerator.so"/>
+				<log text="ino_lite_rt_ue: copied libLiteRtWebGpuAccelerator.so"/>
 			</true>
 		</if>
 	</resourceCopies>

@@ -4,101 +4,98 @@ using System.IO;
 using UnrealBuildTool;
 
 /// <summary>
-/// External UE module that consumes the LiteRT-LM runtime.
+/// External UE module that exposes both LiteRT and LiteRT-LM to consumers.
 ///
-/// The artifacts referenced here are produced by
-///   Plugins/InoAgents/LiteRtLm/scripts/build-win64.ps1
-/// which builds LiteRT-LM from source via Bazel and stages:
-///   - Win64/LiteRtLm.lib                    (import library, linked at UE build time)
-///   - ../../Binaries/.../LiteRtLm.dll        (runtime DLL, delay-loaded at startup)
-///   - ../../Binaries/.../libGemmaModelConstraintProvider.dll  (required sibling DLL)
-///   - Public/litert/lm/engine.h             (public C API header)
+/// Artifacts referenced here are produced by
+///     Plugins/ino_lite_rt_ue/LiteRT/scripts/build-win64.ps1
+/// and staged into the consolidated ThirdParty tree:
+///     Source/ThirdParty/Public/litert/c/         LiteRT C API headers
+///     Source/ThirdParty/Public/litert/c/internal/  LiteRT internal headers
+///     Source/ThirdParty/Public/litert/lm/        LiteRT-LM C API header (engine.h)
+///     Source/ThirdParty/Win64/libLiteRt.lib      LiteRT import lib (synthesized via lib.exe)
+///     Source/ThirdParty/Win64/LiteRtLm.lib       LiteRT-LM import lib (Bazel output)
+///     Source/ThirdParty/Win64/libLiteRt.dll      LiteRT runtime (Google's prebuilt)
+///     Source/ThirdParty/Win64/LiteRtLm.dll       LiteRT-LM runtime (our Bazel build)
+///     Source/ThirdParty/Win64/libGemmaModelConstraintProvider.dll  required sibling
+///     Source/ThirdParty/Win64/libLiteRtWebGpuAccelerator.dll       GPU accelerator
+///     Source/ThirdParty/Win64/libLiteRtTopKWebGpuSampler.dll       GPU sampler
 ///
-/// None of these are tracked in git — they are build outputs. If they are
-/// missing, run `Plugins/InoAgents/LiteRtLm/scripts/build-win64.ps1` first.
-/// See Plugins/InoAgents/CLAUDE.md for the full build story.
+/// If any of these are missing, run
+///     Plugins/ino_lite_rt_ue/LiteRT/scripts/build-win64.ps1
+/// See Plugins/ino_lite_rt_ue/CLAUDE.md for the full build story.
 /// </summary>
-public class InoAgentsLibrary : ModuleRules
+public class LiteRT : ModuleRules
 {
-	public InoAgentsLibrary(ReadOnlyTargetRules Target) : base(Target)
+	public LiteRT(ReadOnlyTargetRules Target) : base(Target)
 	{
 		Type = ModuleType.External;
 
-		// Public headers for LiteRT-LM's C API. Consumers do
+		// Paths to the consolidated ThirdParty staging tree.
+		string ThirdPartyDir = Path.Combine(PluginDirectory, "Source", "ThirdParty");
+		string PublicDir     = Path.Combine(ThirdPartyDir, "Public");
+		string Win64Dir      = Path.Combine(ThirdPartyDir, "Win64");
+		string AndroidDir    = Path.Combine(ThirdPartyDir, "Android", "arm64-v8a");
+
+		// Public headers — consumers do
+		//     #include "litert/c/litert_compiled_model.h"
 		//     #include "litert/lm/engine.h"
-		PublicSystemIncludePaths.Add(Path.Combine(ModuleDirectory, "Public"));
+		PublicSystemIncludePaths.Add(PublicDir);
 
 		if (Target.Platform == UnrealTargetPlatform.Win64)
 		{
-			// --- Import library (link time) ---
-			PublicAdditionalLibraries.Add(Path.Combine(ModuleDirectory, "Win64", "LiteRtLm.lib"));
+			// --- Import libraries (link time) ---
+			PublicAdditionalLibraries.Add(Path.Combine(Win64Dir, "libLiteRt.lib"));
+			PublicAdditionalLibraries.Add(Path.Combine(Win64Dir, "LiteRtLm.lib"));
 
 			// --- Runtime DLLs (delay-loaded at startup) ---
 			//
-			// LiteRtLm.dll                            — our monolithic Bazel output,
-			//                                           contains TFLite, XNNPACK, absl,
-			//                                           protobuf, tokenizers, engine, etc.
-			// libGemmaModelConstraintProvider.dll     — upstream LiteRT-LM prebuilt,
-			//                                           required sibling of LiteRtLm.dll
-			//                                           (Gemma-specific constraint provider
-			//                                           used during generation)
+			// libLiteRt.dll                           LiteRT core runtime (Google's prebuilt)
+			// LiteRtLm.dll                            our Bazel-built monolithic LLM runtime
+			// libGemmaModelConstraintProvider.dll     required sibling of LiteRtLm.dll
+			// libLiteRtWebGpuAccelerator.dll          GPU accelerator (loaded on demand
+			//                                          when backend="gpu" is requested)
+			// libLiteRtTopKWebGpuSampler.dll          GPU-side top-K sampling
+			PublicDelayLoadDLLs.Add("libLiteRt.dll");
 			PublicDelayLoadDLLs.Add("LiteRtLm.dll");
 			PublicDelayLoadDLLs.Add("libGemmaModelConstraintProvider.dll");
-
-			// GPU accelerator DLLs (delay-loaded on demand by the LiteRT engine
-			// when backend="gpu" is requested). These are upstream LiteRT-LM
-			// prebuilt binaries from prebuilt/windows_x86_64/. The engine
-			// dynamically loads them via LoadLibraryA at runtime — they do NOT
-			// need to be loaded by our StartupModule, but they must be staged
-			// alongside the other DLLs so LoadLibraryA can find them.
-			PublicDelayLoadDLLs.Add("libLiteRt.dll");
 			PublicDelayLoadDLLs.Add("libLiteRtWebGpuAccelerator.dll");
 			PublicDelayLoadDLLs.Add("libLiteRtTopKWebGpuSampler.dll");
 
 			// --- Runtime staging (copied next to the executable at cook/package time) ---
-			RuntimeDependencies.Add("$(PluginDir)/Binaries/ThirdParty/InoAgentsLibrary/Win64/LiteRtLm.dll");
-			RuntimeDependencies.Add("$(PluginDir)/Binaries/ThirdParty/InoAgentsLibrary/Win64/libGemmaModelConstraintProvider.dll");
-			RuntimeDependencies.Add("$(PluginDir)/Binaries/ThirdParty/InoAgentsLibrary/Win64/libLiteRt.dll");
-			RuntimeDependencies.Add("$(PluginDir)/Binaries/ThirdParty/InoAgentsLibrary/Win64/libLiteRtWebGpuAccelerator.dll");
-			RuntimeDependencies.Add("$(PluginDir)/Binaries/ThirdParty/InoAgentsLibrary/Win64/libLiteRtTopKWebGpuSampler.dll");
+			RuntimeDependencies.Add(Path.Combine(Win64Dir, "libLiteRt.dll"));
+			RuntimeDependencies.Add(Path.Combine(Win64Dir, "LiteRtLm.dll"));
+			RuntimeDependencies.Add(Path.Combine(Win64Dir, "libGemmaModelConstraintProvider.dll"));
+			RuntimeDependencies.Add(Path.Combine(Win64Dir, "libLiteRtWebGpuAccelerator.dll"));
+			RuntimeDependencies.Add(Path.Combine(Win64Dir, "libLiteRtTopKWebGpuSampler.dll"));
 		}
 		else if (Target.Platform == UnrealTargetPlatform.Android)
 		{
 			// Android arm64-v8a artifacts produced by
-			//   Plugins/InoAgents/LiteRtLm/scripts/build-android-arm64.ps1
-			// The Bazel-built libLiteRtLm.so + libLiteRt.so + prebuilt GPU
-			// accelerator .so files are staged into
-			//   Binaries/ThirdParty/InoAgentsLibrary/Android/arm64-v8a/
-			// UE's Android packaging picks them up via RuntimeDependencies
-			// below and copies them into the APK's lib/arm64-v8a/ directory,
-			// where Android's dynamic linker finds them at process startup.
+			//     Plugins/ino_lite_rt_ue/LiteRT/scripts/build-android-arm64.ps1
+			// staged into Source/ThirdParty/Android/arm64-v8a/.
 			//
-			// Unlike Windows, Android does NOT use import libraries — .so
-			// files are linked directly with PublicAdditionalLibraries at
-			// UE build time, and the linker resolves symbols against the
-			// .so's export table.
-			string Arm64BinDir = Path.Combine(
-				PluginDirectory, "Binaries/ThirdParty/InoAgentsLibrary/Android/arm64-v8a");
+			// Unlike Windows, Android does NOT use import libraries — .so files
+			// are linked directly with PublicAdditionalLibraries at UE build time,
+			// and the linker resolves symbols against the .so's export table.
+			//
+			// NOTE: no libLiteRt.so on Android. Upstream's build:android forces
+			// --dynamic_mode=off which link-statics everything into libLiteRtLm.so.
+			// The prebuilt GPU accelerator .so files have DT_NEEDED(libLiteRt.so)
+			// records that won't resolve at runtime — backend=gpu is currently
+			// non-functional on Android until upstream ships proper Android GPU
+			// artifacts. backend=cpu works fine.
+			//
+			// NOTE: build-android-arm64.ps1 has not yet been updated to stage
+			// into the consolidated Source/ThirdParty/Android tree (it still
+			// writes to Binaries/ThirdParty/LiteRTLM/...). This branch is
+			// scaffolding for when that's fixed.
 
-			// Link against our Bazel output. PublicAdditionalLibraries with
-			// a .so path tells UBT to add it to the linker command line.
-			PublicAdditionalLibraries.Add(Path.Combine(Arm64BinDir, "libLiteRtLm.so"));
+			string LiteRtLmSo = Path.Combine(AndroidDir, "libLiteRtLm.so");
+			if (File.Exists(LiteRtLmSo))
+			{
+				PublicAdditionalLibraries.Add(LiteRtLmSo);
+			}
 
-			// RuntimeDependencies with StageAsReferenceFromBinaryDir tells
-			// the Android packaging step to include each .so in the APK's
-			// lib/arm64-v8a/ directory. Without this, the .so files never
-			// make it into the APK and the app crashes at launch with
-			// "library libLiteRtLm.so not found".
-			// NOTE: no libLiteRt.so on Android. Unlike Windows where
-			// litert_link_capi_so=true splits LiteRT core into a
-			// separate libLiteRt.dll, upstream's build:android forces
-			// --dynamic_mode=off which link-statics everything into
-			// libLiteRtLm.so. That makes CPU backend work (all
-			// litert_lm_* symbols in a single .so) but means the
-			// prebuilt GPU accelerator .so files can't resolve their
-			// DT_NEEDED(libLiteRt.so) at runtime. backend=gpu is
-			// currently non-functional on Android until upstream
-			// ships proper Android GPU artifacts or we rebuild them.
 			string[] AndroidRuntimeSoFiles = new string[]
 			{
 				"libLiteRtLm.so",                      // Bazel-built (monolithic ~49 MB)
@@ -111,7 +108,7 @@ public class InoAgentsLibrary : ModuleRules
 			};
 			foreach (string So in AndroidRuntimeSoFiles)
 			{
-				string SoPath = Path.Combine(Arm64BinDir, So);
+				string SoPath = Path.Combine(AndroidDir, So);
 				if (File.Exists(SoPath))
 				{
 					RuntimeDependencies.Add(SoPath);
@@ -120,23 +117,14 @@ public class InoAgentsLibrary : ModuleRules
 
 			// Apply the AndroidManifest.xml additions + build.gradle tweaks
 			// that tell UE's APK packager to bundle our native libraries.
-			// This is the mechanism Unreal uses to inject per-plugin Android
-			// build customization — we ship a UPL (Unreal Plugin Language)
-			// XML file next to this Build.cs that declares the native libs
-			// and, if needed, any extra JNI_OnLoad hooks.
 			AdditionalPropertiesForReceipt.Add(
 				"AndroidPlugin",
-				Path.Combine(ModuleDirectory, "InoAgentsLibrary_UPL_Android.xml"));
+				Path.Combine(ModuleDirectory, "LiteRT_UPL_Android.xml"));
 		}
 		else
 		{
-			// iOS / Linux / macOS not yet implemented. Building for those
-			// platforms falls through to the stub file at
-			// Source/InoAgents/Private/LiteRtLm/InoLiteRtLmStubs_NonWindows.cpp
-			// which satisfies the linker with no-op implementations. Every
-			// LiteRT-LM call will gracefully return nullptr / failure at
-			// runtime. All other plugin features (ElevenLabs, streaming
-			// audio, chat panel) continue to work.
+			// iOS / Linux / macOS: not yet implemented. Linking succeeds because
+			// no static references; runtime calls fail gracefully.
 		}
 	}
 }
