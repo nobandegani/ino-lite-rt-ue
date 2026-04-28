@@ -3,9 +3,9 @@
 using System.IO;
 using UnrealBuildTool;
 
-public class ino_lite_rt_ue : ModuleRules
+public class InoLiteRT : ModuleRules
 {
-	public ino_lite_rt_ue(ReadOnlyTargetRules Target) : base(Target)
+	public InoLiteRT(ReadOnlyTargetRules Target) : base(Target)
 	{
 		PCHUsage = ModuleRules.PCHUsageMode.UseExplicitOrSharedPCHs;
 
@@ -38,7 +38,10 @@ public class ino_lite_rt_ue : ModuleRules
 				"Engine",
 				"Slate",
 				"SlateCore",
-				// ... add private dependencies that you statically link with here ...
+
+				// IPluginManager — used in StartupModule to resolve our
+				// plugin's install path so we can load DLLs by full absolute path.
+				"Projects",
 			}
 			);
 

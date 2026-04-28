@@ -2,7 +2,7 @@
 	"FileVersion": 3,
 	"Version": 1,
 	"VersionName": "1.0",
-	"FriendlyName": "ino_lite_rt_ue",
+	"FriendlyName": "InoLiteRT",
 	"Description": "",
 	"Category": "Other",
 	"CreatedBy": "",
@@ -16,7 +16,7 @@
 	"Installed": false,
 	"Modules": [
 		{
-			"Name": "ino_lite_rt_ue",
+			"Name": "InoLiteRT",
 			"Type": "Runtime",
 			"LoadingPhase": "PreLoadingScreen"
 		}
