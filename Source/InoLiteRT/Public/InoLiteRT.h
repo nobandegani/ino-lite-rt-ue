@@ -2,13 +2,13 @@
 
 #pragma once
 
-  #include "Modules/ModuleManager.h"
+#include "Modules/ModuleManager.h"
 #include "Logging/LogMacros.h"
 
 DECLARE_LOG_CATEGORY_EXTERN(LogInoLiteRT, Log, All);
 
 /**
- * ino_lite_rt_ue runtime module.
+ * InoLiteRT runtime module.
  *
  * Pre-loads the LiteRT + LiteRT-LM runtime DLLs at StartupModule so the rest
  * of the plugin (and consumer modules) can call into the C APIs through
@@ -39,7 +39,7 @@ DECLARE_LOG_CATEGORY_EXTERN(LogInoLiteRT, Log, All);
  * UPL XML's <soLoadLibrary> directives — no per-DLL work for StartupModule
  * beyond the smoke test.
  */
-class Fino_lite_rt_ueModule : public IModuleInterface
+class FInoLiteRTModule : public IModuleInterface
 {
 public:
 	//~ IModuleInterface

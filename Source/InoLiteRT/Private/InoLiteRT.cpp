@@ -32,7 +32,7 @@ namespace
 	FString ResolveStagedDllPath(const TCHAR* DllFileName)
 	{
 		const TSharedPtr<IPlugin> Plugin =
-			IPluginManager::Get().FindPlugin(TEXT("ino_lite_rt_ue"));
+			IPluginManager::Get().FindPlugin(TEXT("InoLiteRT"));
 		if (!Plugin.IsValid())
 		{
 			return FString();
@@ -64,8 +64,8 @@ namespace
 		const FString Path = ResolveStagedDllPath(DllFileName);
 		if (Path.IsEmpty())
 		{
-			UE_LOG(LogInoLiteRtUe, Warning,
-				TEXT("ino_lite_rt_ue: not loading %s (unsupported platform)"),
+			UE_LOG(LogInoLiteRT, Warning,
+				TEXT("InoLiteRT: not loading %s (unsupported platform)"),
 				DllFileName);
 			return nullptr;
 		}
@@ -73,14 +73,14 @@ namespace
 		void* Handle = FPlatformProcess::GetDllHandle(*Path);
 		if (Handle)
 		{
-			UE_LOG(LogInoLiteRtUe, Log,
-				TEXT("ino_lite_rt_ue: loaded %s from %s"),
+			UE_LOG(LogInoLiteRT, Log,
+				TEXT("InoLiteRT: loaded %s from %s"),
 				DllFileName, *Path);
 		}
 		else
 		{
-			UE_LOG(LogInoLiteRtUe, Error,
-				TEXT("ino_lite_rt_ue: failed to load %s from %s. Did you run "
+			UE_LOG(LogInoLiteRT, Error,
+				TEXT("InoLiteRT: failed to load %s from %s. Did you run "
 					 "Plugins/ino_lite_rt_ue/LiteRT/scripts/build-win64.ps1?"),
 				DllFileName, *Path);
 		}
@@ -88,7 +88,7 @@ namespace
 	}
 }
 
-void Fino_lite_rt_ueModule::StartupModule()
+void FInoLiteRTModule::StartupModule()
 {
 #if PLATFORM_WINDOWS
 	// Load order is critical — each DLL must be in memory before any
@@ -146,13 +146,13 @@ void Fino_lite_rt_ueModule::StartupModule()
 	if (bCanCallLiteRtLm)
 	{
 		litert_lm_set_min_log_level(0);
-		UE_LOG(LogInoLiteRtUe, Log,
-			TEXT("ino_lite_rt_ue: smoke test passed — litert_lm_set_min_log_level(0) returned cleanly."));
+		UE_LOG(LogInoLiteRT, Log,
+			TEXT("InoLiteRT: smoke test passed — litert_lm_set_min_log_level(0) returned cleanly."));
 	}
 #endif
 }
 
-void Fino_lite_rt_ueModule::ShutdownModule()
+void FInoLiteRTModule::ShutdownModule()
 {
 #if PLATFORM_WINDOWS
 	// Unload in reverse dependency order: GPU DLLs first (they import

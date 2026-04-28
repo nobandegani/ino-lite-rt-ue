@@ -73,8 +73,8 @@ public class InoLiteRT : ModuleRules
 		//     Source/ThirdParty/Win64/libLiteRtTopKWebGpuSampler.dll
 		//
 		// Companion files in this same directory:
-		//     LiteRT.tps                  third-party software notification
-		//     LiteRT_UPL_Android.xml      Android packaging directives
+		//     InoLiteRT.tps                  third-party software notification
+		//     InoLiteRT_UPL_Android.xml      Android packaging directives
 
 		string ThirdPartyDir = Path.Combine(PluginDirectory, "Source", "ThirdParty");
 		string PublicDir     = Path.Combine(ThirdPartyDir, "Public");
@@ -149,7 +149,7 @@ public class InoLiteRT : ModuleRules
 			// AndroidManifest.xml additions + build.gradle tweaks for APK packaging.
 			AdditionalPropertiesForReceipt.Add(
 				"AndroidPlugin",
-				Path.Combine(ModuleDirectory, "LiteRT_UPL_Android.xml"));
+				Path.Combine(ModuleDirectory, "InoLiteRT_UPL_Android.xml"));
 		}
 		// iOS / Linux / macOS: not yet implemented. Linking succeeds because
 		// no static references; runtime calls fail gracefully.
