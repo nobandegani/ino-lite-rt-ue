@@ -89,12 +89,13 @@ try {
 # does not transparently use the \\?\ prefix for its input files. LiteRT-LM's
 # Rust proc-macro intermediate .rcgu.o filenames alone consume ~220 chars,
 # so path prefixes must be short. Upstream CI uses D:/w-<hash>/; we use
-# C:/b/ino-litert-lm/ for the Win64 build and C:/b/ino-litert-lm-android/
-# for the Android cross-compile. (LiteRT itself is NOT built from source —
-# see build-win64.ps1 — so no separate output base for it.)
+# one base per Bazel build configuration: Win64, Android arm64-v8a, and
+# Android x86_64. (LiteRT itself is NOT built from source — see
+# build-win64.ps1 — so no separate output base for it.)
 $OutputBases = @(
     "C:/b/ino-litert-lm",
-    "C:/b/ino-litert-lm-android"
+    "C:/b/ino-litert-lm-android-arm64-v8a",
+    "C:/b/ino-litert-lm-android-x86_64"
 )
 foreach ($base in $OutputBases) {
     if (-not (Test-Path $base)) {

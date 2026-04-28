@@ -1,27 +1,51 @@
-# build-android-arm64.ps1
+# build-android.ps1
 #
-# Build libLiteRtLm.so from source for Android arm64-v8a and stage all
-# artifacts into the ino_lite_rt_ue plugin under Source/ThirdParty/.
+# Build libLiteRtLm.so from source for Android (arm64-v8a or x86_64) and
+# stage all artifacts into the ino_lite_rt_ue plugin under Source/ThirdParty/.
+#
+# Usage:
+#   .\build-android.ps1                    # default: arm64-v8a (real devices)
+#   .\build-android.ps1 -Arch arm64-v8a    # explicit arm64
+#   .\build-android.ps1 -Arch x86_64       # emulators / x86 Chromebooks
 #
 # Step order:
-#   1. NDK r28+ preflight (auto-detect under %LOCALAPPDATA%\Android\Sdk\ndk\)
+#   1. NDK r28.x preflight (auto-detect under %LOCALAPPDATA%\Android\Sdk\ndk\)
 #   2. setup.ps1                              (preflight + overlay)
-#   3. bazelisk build //ino:LiteRtLm  --config=android_arm64
-#   4. Stage everything to Source/ThirdParty/{Android/arm64-v8a, Public}
+#   3. bazelisk build //ino:LiteRtLm  --config=android_<arch>
+#   4. Stage everything to Source/ThirdParty/{Android/<arch>, Public}
 #
 # LiteRT itself is NOT built — same as Win64, we use the prebuilt .so files
-# Google ships inside LiteRT-LM's prebuilt/android_arm64/ folder. Note that
+# Google ships inside LiteRT-LM's prebuilt/android_<arch>/ folder. Note that
 # upstream's --dynamic_mode=off statically links LiteRT core into the
 # monolithic libLiteRtLm.so on Android, so unlike Win64 there is no
 # separate libLiteRt.so or matching import library.
 
+param(
+    [ValidateSet("arm64-v8a", "x86_64")]
+    [string]$Arch = "arm64-v8a"
+)
+
 $ErrorActionPreference = "Stop"
 
-$ScriptDir    = Split-Path -Parent $MyInvocation.MyCommand.Path
-$WorkspaceDir = (Resolve-Path (Join-Path $ScriptDir "..")).Path
+# Map our -Arch to the upstream Bazel config name and the prebuilt subdir.
+# Upstream uses "android_arm64" / "android_x86_64" for the Bazel config
+# and "android_arm64" / "android_x86_64" for the prebuilt subdirectories.
+switch ($Arch) {
+    "arm64-v8a" {
+        $BazelConfig    = "android_arm64"
+        $PrebuiltSubDir = "android_arm64"
+    }
+    "x86_64" {
+        $BazelConfig    = "android_x86_64"
+        $PrebuiltSubDir = "android_x86_64"
+    }
+}
+
+$ScriptDir      = Split-Path -Parent $MyInvocation.MyCommand.Path
+$WorkspaceDir   = (Resolve-Path (Join-Path $ScriptDir "..")).Path
 $LiteRtSubDir   = Join-Path $WorkspaceDir "vendor\LiteRT"
 $LiteRtLmSubDir = Join-Path $WorkspaceDir "vendor\LiteRT-LM"
-$PluginDir    = (Resolve-Path (Join-Path $WorkspaceDir "..")).Path
+$PluginDir      = (Resolve-Path (Join-Path $WorkspaceDir "..")).Path
 
 #---------------------------------------------------------------------
 # 1. Preflight: locate an Android NDK r28.x
@@ -80,6 +104,8 @@ $AndroidNdkHome = $AndroidNdkHome.Replace('\', '/')
 
 Write-Host ""
 Write-Host "=== Android build preflight ===" -ForegroundColor Cyan
+Write-Host "  Architecture:     $Arch"
+Write-Host "  Bazel config:     --config=$BazelConfig"
 Write-Host "  ANDROID_NDK_HOME: $AndroidNdkHome"
 $env:ANDROID_NDK_HOME = $AndroidNdkHome
 
@@ -90,18 +116,20 @@ $env:ANDROID_NDK_HOME = $AndroidNdkHome
 if ($LASTEXITCODE -ne 0) { throw "setup.ps1 failed" }
 
 #---------------------------------------------------------------------
-# 3. Bazel build LiteRT-LM (Android arm64)
+# 3. Bazel build LiteRT-LM (Android <arch>)
 #---------------------------------------------------------------------
 # Android build configuration. INTENTIONALLY DIVERGES from Win64 on two
 # defines — see comments below.
 #
-#   --config=android_arm64  — picks the arm64-v8a toolchain via
-#                              upstream's .bazelrc. This config sets
-#                              --dynamic_mode=off which force-statics
-#                              every transitive dep into the final .so.
-#                              As a result, on Android we intentionally
-#                              produce ONE monolithic libLiteRtLm.so and
-#                              no separate libLiteRt.so.
+#   --config=android_<arch>  — picks the appropriate Android toolchain
+#                              via upstream's .bazelrc. All Android
+#                              configs inherit build:android, which sets
+#                              --dynamic_mode=off (force-statics every
+#                              transitive dep into the final .so) and
+#                              --noenable_platform_specific_config (so
+#                              the host build:windows config is NOT
+#                              auto-applied — we replay the host MSVC
+#                              flags manually below).
 #
 # NOT passed on Android (unlike Win64):
 #
@@ -125,12 +153,13 @@ if ($LASTEXITCODE -ne 0) { throw "setup.ps1 failed" }
 #     split. For our monolithic Android .so the default
 #     (resolve_symbols_in_exec=true) is correct.
 
-$BazelOutputBase = "C:/b/ino-litert-lm-android"   # different from Win64 to
-                                                   # avoid cache-key conflicts
-$BazelDiskCache  = "C:/b/ino-litert-lm-android-cache"
+# Per-architecture output base + disk cache so different ABI builds
+# don't thrash the same Bazel action cache.
+$BazelOutputBase = "C:/b/ino-litert-lm-android-$Arch"
+$BazelDiskCache  = "C:/b/ino-litert-lm-android-$Arch-cache"
 
 Write-Host ""
-Write-Host "=== Bazel build: LiteRT-LM (Android arm64) ===" -ForegroundColor Cyan
+Write-Host "=== Bazel build: LiteRT-LM (Android $Arch) ===" -ForegroundColor Cyan
 Write-Host "Working dir:  $LiteRtLmSubDir"
 Write-Host "Output base:  $BazelOutputBase"
 Write-Host "Disk cache:   $BazelDiskCache"
@@ -147,7 +176,7 @@ try {
     #
     # Each flag below corresponds to one in upstream's build:windows
     # in LiteRT-LM/.bazelrc. Flags that affect TARGET compilation
-    # (Android arm64 via clang) are deliberately NOT included here —
+    # (Android via clang) are deliberately NOT included here —
     # build:android handles those.
     #
     #   --host_cxxopt=/std:c++20 — MSVC syntax for C++20 (build:android
@@ -171,7 +200,7 @@ try {
     #     (required by some absl / protobuf macros).
     & bazelisk --output_base=$BazelOutputBase `
         build //ino:LiteRtLm `
-        --config=android_arm64 `
+        --config=$BazelConfig `
         --disk_cache=$BazelDiskCache `
         --define=protobuf_allow_msvc=true `
         --host_cxxopt=/std:c++20 `
@@ -194,25 +223,26 @@ try {
 #---------------------------------------------------------------------
 # 4. Stage all artifacts into Source/ThirdParty/
 #---------------------------------------------------------------------
-# Single destination tree mirroring the Win64 layout:
-#   Source/ThirdParty/Android/arm64-v8a/      All .so files
+# Per-architecture .so destination, shared headers (same engine.h /
+# litert/c headers across all architectures):
+#   Source/ThirdParty/Android/<arch>/         All .so files for this ABI
 #   Source/ThirdParty/Public/litert/c/         LiteRT C API headers
 #   Source/ThirdParty/Public/litert/c/internal/  internal headers
 #   Source/ThirdParty/Public/litert/lm/        LiteRT-LM C API header
 #
 # UE's Android packaging picks up native .so files via the
 # RuntimeDependencies + UPL XML registered in the InoLiteRT module's
-# Build.cs. The APK builder copies them into the APK's lib/arm64-v8a/
+# Build.cs. The APK builder copies them into the APK's lib/<arch>/
 # directory where Android's dynamic linker picks them up.
 Write-Host ""
 Write-Host "=== Staging artifacts ===" -ForegroundColor Cyan
 
-$Arm64Dst        = Join-Path $PluginDir "Source\ThirdParty\Android\arm64-v8a"
+$ArchDst         = Join-Path $PluginDir "Source\ThirdParty\Android\$Arch"
 $LiteRtHdrDst    = Join-Path $PluginDir "Source\ThirdParty\Public\litert\c"
 $LiteRtIntHdrDst = Join-Path $LiteRtHdrDst "internal"
 $LiteRtLmHdrDst  = Join-Path $PluginDir "Source\ThirdParty\Public\litert\lm"
 
-foreach ($d in @($Arm64Dst, $LiteRtHdrDst, $LiteRtIntHdrDst, $LiteRtLmHdrDst)) {
+foreach ($d in @($ArchDst, $LiteRtHdrDst, $LiteRtIntHdrDst, $LiteRtLmHdrDst)) {
     if (-not (Test-Path $d)) {
         New-Item -ItemType Directory -Path $d -Force | Out-Null
     }
@@ -236,11 +266,11 @@ if (-not $SoSrc) {
     Get-ChildItem $LiteRtLmBazelBin 2>$null | ForEach-Object { Write-Host "  $($_.Name)" }
     throw "libLiteRtLm.so not produced by Bazel"
 }
-Copy-Item -Path $SoSrc -Destination (Join-Path $Arm64Dst "libLiteRtLm.so") -Force
-Write-Host "  [STAGE] libLiteRtLm.so (from $(Split-Path $SoSrc -Leaf)) -> $Arm64Dst"
+Copy-Item -Path $SoSrc -Destination (Join-Path $ArchDst "libLiteRtLm.so") -Force
+Write-Host "  [STAGE] libLiteRtLm.so (from $(Split-Path $SoSrc -Leaf)) -> $ArchDst"
 
 # --- Prebuilt GPU accelerator + constraint provider .so files ---
-# From upstream's vendor/LiteRT-LM/prebuilt/android_arm64/. These are
+# From upstream's vendor/LiteRT-LM/prebuilt/android_<arch>/. These are
 # dynamically loaded by the LiteRT engine at runtime (via dlopen with
 # SharedLibrary::Load).
 #
@@ -258,7 +288,7 @@ Write-Host "  [STAGE] libLiteRtLm.so (from $(Split-Path $SoSrc -Leaf)) -> $Arm64
 # libc, libEGL, libGLESv3). So the original blocker is gone. Whether
 # GPU actually works end-to-end on a real device hasn't been verified;
 # treat as a smoke test target.
-$AndroidPrebuiltDir = Join-Path $LiteRtLmSubDir "prebuilt\android_arm64"
+$AndroidPrebuiltDir = Join-Path $LiteRtLmSubDir "prebuilt\$PrebuiltSubDir"
 $AndroidPrebuiltSoFiles = @(
     "libGemmaModelConstraintProvider.so",
     "libLiteRtGpuAccelerator.so",
@@ -270,8 +300,8 @@ $AndroidPrebuiltSoFiles = @(
 foreach ($so in $AndroidPrebuiltSoFiles) {
     $src = Join-Path $AndroidPrebuiltDir $so
     if (Test-Path $src) {
-        Copy-Item -Path $src -Destination (Join-Path $Arm64Dst $so) -Force
-        Write-Host "  [STAGE] $so -> $Arm64Dst"
+        Copy-Item -Path $src -Destination (Join-Path $ArchDst $so) -Force
+        Write-Host "  [STAGE] $so -> $ArchDst"
     } else {
         Write-Warning "Prebuilt not found: $src"
     }
@@ -304,8 +334,8 @@ if (Test-Path $lmHeader) {
 }
 
 Write-Host ""
-Write-Host "=== Android build complete ===" -ForegroundColor Green
+Write-Host "=== Android $Arch build complete ===" -ForegroundColor Green
 Write-Host "Next steps:"
 Write-Host "  1. Rebuild the UE project for Android (Package -> Android)"
-Write-Host "  2. Install APK on device"
+Write-Host "  2. Install APK on device / emulator"
 Write-Host "  3. Test with backend=cpu first; backend=gpu is untested on this pin (see notes above)"
