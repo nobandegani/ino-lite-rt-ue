@@ -79,7 +79,7 @@ public class InoLiteRT : ModuleRules
 		string ThirdPartyDir = Path.Combine(PluginDirectory, "Source", "ThirdParty");
 		string PublicDir     = Path.Combine(ThirdPartyDir, "Public");
 		string Win64Dir      = Path.Combine(ThirdPartyDir, "Win64");
-		string AndroidDir    = Path.Combine(ThirdPartyDir, "Android", "arm64-v8a");
+		string AndroidBaseDir = Path.Combine(ThirdPartyDir, "Android");
 
 		// Public headers — consumers do
 		//     #include "litert/c/litert_compiled_model.h"
@@ -108,41 +108,58 @@ public class InoLiteRT : ModuleRules
 		}
 		else if (Target.Platform == UnrealTargetPlatform.Android)
 		{
-			// Android arm64-v8a artifacts (when present) — produced by
-			// Plugins/ino_lite_rt_ue/LiteRT/scripts/build-android-arm64.ps1.
-			//
-			// NOTE: build-android-arm64.ps1 has not yet been updated to stage
-			// into the consolidated Source/ThirdParty/Android tree (it still
-			// writes to Binaries/ThirdParty/LiteRTLM/...). This branch is
-			// scaffolding for when that's fixed.
+			// Android artifacts produced by
+			// Plugins/ino_lite_rt_ue/LiteRT/scripts/build-android.ps1
+			// staged under Source/ThirdParty/Android/<arch>/. We support
+			// both arm64-v8a (real devices, default) and x86_64 (emulators).
 			//
 			// Unlike Windows, Android does NOT use import libraries — the
 			// .so is linked directly via PublicAdditionalLibraries. There is
 			// no libLiteRt.so on Android (upstream's --dynamic_mode=off
 			// statically links LiteRT into the monolithic libLiteRtLm.so).
+			//
+			// We iterate over both arches and File.Exists-guard each .so.
+			// UBT runs Build.cs once per target architecture, so only the
+			// matching arch's .so will actually be linked into the per-arch
+			// build output. RuntimeDependencies entries for both arches are
+			// fine — UE's APK packaging step routes each .so to lib/<arch>/
+			// based on its source path, and the UPL XML's <copyFile>
+			// directives use $S(Architecture) to pick the right one per
+			// packaging pass.
 
-			string LiteRtLmSo = Path.Combine(AndroidDir, "libLiteRtLm.so");
-			if (File.Exists(LiteRtLmSo))
-			{
-				PublicAdditionalLibraries.Add(LiteRtLmSo);
-			}
+			string[] AndroidArches = new string[] { "arm64-v8a", "x86_64" };
 
-			string[] AndroidRuntimeSoFiles = new string[]
+			string[] AndroidSoFiles = new string[]
 			{
-				"libLiteRtLm.so",
-				"libGemmaModelConstraintProvider.so",
-				"libLiteRtGpuAccelerator.so",
-				"libLiteRtOpenClAccelerator.so",
-				"libLiteRtTopKOpenClSampler.so",
-				"libLiteRtTopKWebGpuSampler.so",
-				"libLiteRtWebGpuAccelerator.so",
+				"libLiteRtLm.so",                      // Bazel-built (monolithic)
+				"libGemmaModelConstraintProvider.so",  // upstream prebuilt
+				"libLiteRtGpuAccelerator.so",          // upstream prebuilt
+				"libLiteRtOpenClAccelerator.so",       // upstream prebuilt
+				"libLiteRtTopKOpenClSampler.so",       // upstream prebuilt
+				"libLiteRtTopKWebGpuSampler.so",       // upstream prebuilt
+				"libLiteRtWebGpuAccelerator.so",       // upstream prebuilt
 			};
-			foreach (string So in AndroidRuntimeSoFiles)
+
+			foreach (string Arch in AndroidArches)
 			{
-				string SoPath = Path.Combine(AndroidDir, So);
-				if (File.Exists(SoPath))
+				string ArchDir = Path.Combine(AndroidBaseDir, Arch);
+
+				// Link against libLiteRtLm.so (only the matching arch
+				// actually links; UBT picks based on Target.Architecture).
+				string LiteRtLmSo = Path.Combine(ArchDir, "libLiteRtLm.so");
+				if (File.Exists(LiteRtLmSo))
 				{
-					RuntimeDependencies.Add(SoPath);
+					PublicAdditionalLibraries.Add(LiteRtLmSo);
+				}
+
+				// Stage every shipped .so for this arch.
+				foreach (string So in AndroidSoFiles)
+				{
+					string SoPath = Path.Combine(ArchDir, So);
+					if (File.Exists(SoPath))
+					{
+						RuntimeDependencies.Add(SoPath);
+					}
 				}
 			}
 
