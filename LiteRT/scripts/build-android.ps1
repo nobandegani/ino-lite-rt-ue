@@ -198,6 +198,15 @@ try {
     #     slim down windows.h to avoid name collisions.
     #   --host_copt=/Zc:preprocessor — conforming preprocessor mode
     #     (required by some absl / protobuf macros).
+    #   --host_copt=/Iexternal/com_google_protobuf/src — adds protobuf's
+    #     own source dir to the host include path. Without this, the
+    #     protobuf "bootstrap" build (which compiles .pb.cc files for
+    #     descriptor.proto / java_features.proto / etc.) fails with
+    #     "Cannot open include file: 'google/protobuf/compiler/java/
+    #     java_features.pb.h'" — the generated .pb.h is at
+    #     bazel-out/.../external/com_google_protobuf/src/... and the
+    #     #include uses google/protobuf/... so the flag points the
+    #     compiler at the right strip prefix.
     & bazelisk --output_base=$BazelOutputBase `
         build //ino:LiteRtLm `
         --config=$BazelConfig `
@@ -212,6 +221,7 @@ try {
         --host_copt=-DWIN32_LEAN_AND_MEAN `
         --host_copt=-DNOGDI `
         --host_copt=/Zc:preprocessor `
+        --host_copt=/Iexternal/com_google_protobuf/src `
         --verbose_failures
     if ($LASTEXITCODE -ne 0) {
         throw "LiteRT-LM bazelisk build failed (exit code $LASTEXITCODE)"
