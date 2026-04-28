@@ -1,157 +1,345 @@
-# CLAUDE.md — ino_lite_rt_ue plugin
+# CLAUDE.md — InoLiteRT plugin
 
 This file provides guidance to Claude Code (claude.ai/code) when working
-inside `Plugins/ino_lite_rt_ue/`. The hosting demo project is documented
-in `E:/Projects/InoProject/CLAUDE.md`.
+inside `Plugins/InoLiteRT/`. The hosting demo project is documented in
+`E:/Projects/InoProject/CLAUDE.md`.
 
 ## Purpose
 
-`ino_lite_rt_ue` is an Unreal Engine 5 runtime plugin whose job is to
+`InoLiteRT` is an Unreal Engine 5.7 runtime plugin whose job is to
 **build Google's two on-device ML runtimes from source and expose them
-as UE modules** so other plugins (and game code) can consume both:
+as a UE module** that other plugins (currently `InoAgents`) declare as a
+dependency:
 
 - **LiteRT-LM** — Google's on-device LLM runtime (Gemma 4 inference,
   tool calling, streaming). Upstream:
   https://github.com/google-ai-edge/LiteRT-LM
-- **LiteRT** — Google's TFLite-based inference runtime for arbitrary
-  TFLite models (the underlying runtime LiteRT-LM itself depends on,
-  but also useful standalone for non-LLM TFLite workloads). Upstream:
-  https://github.com/google-ai-edge/LiteRT
+- **LiteRT** — Google's underlying TFLite-based inference runtime.
+  Upstream: https://github.com/google-ai-edge/LiteRT
 
-Both are built from source via Bazel into shared libraries that ship
-inside the plugin's `Binaries/ThirdParty/`, with import libs + headers
-staged under `Source/ThirdParty/`. UE consumers link against them via
-ordinary Build.cs `PublicDependencyModuleNames` entries.
+LiteRT-LM is built from source via Bazel. LiteRT itself ships pre-built
+by Google inside LiteRT-LM's `prebuilt/<platform>/` folder — we don't
+compile LiteRT ourselves. The matching Windows import library
+`libLiteRt.lib` is synthesized at build time from the DLL's export table
+via MSVC's `lib.exe /def:` (faster than building LiteRT from source,
+exposes all ~424 public symbols).
+
+Artifacts are staged into `Source/ThirdParty/{Win64,Android/<arch>,Public}/`.
+The single UE module (`InoLiteRT`) embeds all third-party wiring directly
+— no separate "ThirdParty external module" subdirectory. Consumer plugins
+(InoAgents, future ones) link against it via ordinary Build.cs
+`PublicDependencyModuleNames` entries.
 
 The plugin is target-platform-aware: **Windows (Win64)** and **Android
-(arm64-v8a)** today, matching the hosting project's targets. iOS, Linux,
-and macOS are scaffolded but not yet built.
+(arm64-v8a + x86_64)** ship today. iOS, Linux, and macOS are scaffolded
+in `Source/InoLiteRT/Private/InoLiteRT.cpp` (gated `#if PLATFORM_WINDOWS
+|| PLATFORM_ANDROID`) but no library has been built for them yet.
 
-## High-level layout
+## Layout
 
 ```
-Plugins/ino_lite_rt_ue/
-├── ino_lite_rt_ue.uplugin            ← UE plugin manifest
+Plugins/InoLiteRT/
+├── InoLiteRT.uplugin                    ← UE plugin manifest (LoadingPhase=PreLoadingScreen)
 │
-├── LiteRT/                           ← Bazel build workspace umbrella for both runtimes
-│   ├── LITERT_TAG                    ← pinned LiteRT commit SHA (matches LiteRT-LM's LITERT_REF)
-│   ├── LITERT_LM_TAG                 ← pinned LiteRT-LM commit SHA
-│   ├── vendor/
-│   │   ├── LiteRT/                   ← git submodule → google-ai-edge/LiteRT
-│   │   │                                (used for staging LiteRT C API headers;
-│   │   │                                 the libLiteRt.dll itself is shipped pre-built
-│   │   │                                 by Google inside LiteRT-LM's prebuilt/<platform>/)
-│   │   └── LiteRT-LM/                ← git submodule → google-ai-edge/LiteRT-LM
-│   ├── overlay/ino/                  ← files staged into the LiteRT-LM submodule before build
-│   │   ├── BUILD.bazel               ← defines //ino:LiteRtLm cc_binary target
-│   │   └── LiteRtLm_exports.cc       ← DllMain + force-reference of every C API fn
-│   └── scripts/                      ← setup.ps1, build-win64.ps1,
-│                                       build-android-arm64.ps1, update-litert.ps1,
-│                                       clean.ps1 (currently all LiteRT-LM-focused)
+├── LiteRT/                              ← Bazel build workspace
+│   ├── LITERT_TAG                       ← pinned LiteRT commit SHA (matches LiteRT-LM's LITERT_REF)
+│   ├── LITERT_LM_TAG                    ← pinned LiteRT-LM commit SHA
+│   ├── overlay/ino/                     ← files staged into the LiteRT-LM submodule before build
+│   │   ├── BUILD.bazel                  ← //ino:LiteRtLm cc_binary target
+│   │   └── LiteRtLm_exports.cc          ← DllMain stub + force-reference of every C API fn
+│   ├── scripts/                         ← Build automation
+│   │   ├── setup.ps1                    ← one-time preflight + overlay application
+│   │   ├── build-win64.ps1              ← build + stage Win64 artifacts
+│   │   ├── build-android.ps1            ← build + stage Android (-Arch arm64-v8a|x86_64)
+│   │   ├── update-litert.ps1            ← bump LiteRT-LM submodule + rebuild
+│   │   └── clean.ps1                    ← wipe Bazel caches
+│   └── vendor/
+│       ├── LiteRT/                      ← git submodule (header staging + windows .def)
+│       └── LiteRT-LM/                   ← git submodule (Bazel builds this)
 │
-├── Source/
-│   ├── ino_lite_rt_ue/               ← runtime UE module — loads DLLs, exposes API
-│   │   ├── ino_lite_rt_ue.Build.cs
-│   │   ├── Public/                   ← UE-facing types (Blueprint subsystems,
-│   │   │                               settings, helpers)
-│   │   └── Private/                  ← module impl + DLL loading + smoke tests
-│   │
-│   └── ThirdParty/                   ← UE External modules wrapping the built libs
-│       ├── LiteRTLM/                 ← LiteRT-LM external module (the .dll/.so +
-│       │                               import lib + C API headers staged here by
-│       │                               LiteRT/scripts/build-*.ps1)
-│       │   ├── LiteRTLM.Build.cs
-│       │   ├── LiteRTLM.tps
-│       │   ├── LiteRTLM_UPL_Android.xml
-│       │   ├── Public/litert/lm/     ← engine.h (staged from build)
-│       │   ├── Win64/LiteRtLm.lib    ← import lib (staged from build)
-│       │   └── Android/arm64-v8a/    ← .so files (staged from build)
-│       │
-│       └── LiteRT/                   ← LiteRT external module (planned, same shape)
-│
-└── Binaries/ThirdParty/              ← runtime DLLs / .so files (gitignored)
-    ├── LiteRTLM/Win64/, /Android/...
-    └── LiteRT/Win64/, /Android/...
+└── Source/
+    ├── InoLiteRT/                       ← The single UE module
+    │   ├── InoLiteRT.Build.cs           ← embeds third-party wiring (libs, DLLs, UPL, includes)
+    │   ├── InoLiteRT.tps                ← third-party software notification
+    │   ├── InoLiteRT_UPL_Android.xml    ← APK packaging directives
+    │   ├── Public/InoLiteRT.h           ← FInoLiteRTModule (DLL handle members)
+    │   └── Private/InoLiteRT.cpp        ← StartupModule loads DLLs in dep order + smoke test
+    │
+    └── ThirdParty/                      ← staged build outputs (consumed by UE)
+        ├── Public/litert/c/             ← 27 LiteRT C API headers (consumer-visible)
+        ├── Public/litert/c/internal/    ← 15 LiteRT internal headers
+        ├── Public/litert/lm/engine.h    ← LiteRT-LM C API header
+        ├── Win64/                       ← 5 DLLs + 2 import libs
+        │   ├── libLiteRt.{dll,lib}
+        │   ├── LiteRtLm.{dll,lib}
+        │   ├── libGemmaModelConstraintProvider.dll
+        │   ├── libLiteRtWebGpuAccelerator.dll
+        │   └── libLiteRtTopKWebGpuSampler.dll
+        └── Android/<arch>/              ← 7 .so files per arch (no separate libLiteRt.so)
+            ├── libLiteRtLm.so           (Bazel-built ~52 MB monolithic)
+            ├── libGemmaModelConstraintProvider.so
+            ├── libLiteRtGpuAccelerator.so
+            ├── libLiteRtOpenClAccelerator.so
+            ├── libLiteRtTopKOpenClSampler.so
+            ├── libLiteRtTopKWebGpuSampler.so
+            └── libLiteRtWebGpuAccelerator.so
 ```
-
-## Build flow
-
-The Bazel build is **outside** UE's build pipeline. Devs run a script
-once per platform per upstream version bump:
-
-1. `LiteRT/scripts/setup.ps1` — preflight (Bazelisk, MSVC, Git path,
-   Developer Mode, Bazel output base), initialize the LiteRT-LM submodule,
-   copy `overlay/` files into the submodule, register them in the
-   submodule's `.git/info/exclude` so the submodule's working tree stays
-   clean.
-2. `LiteRT/scripts/build-win64.ps1` — `bazelisk build //ino:LiteRtLm`,
-   then copy the resulting `LiteRtLm.dll` + `libLiteRt.dll` + GPU
-   accelerator DLLs + import lib + headers into `Binaries/ThirdParty/LiteRTLM/Win64/`
-   and `Source/ThirdParty/LiteRTLM/{Win64,Public}/`.
-3. `LiteRT/scripts/build-android-arm64.ps1` — same but with
-   `--config=android_arm64`, NDK r28+, separate Bazel output base.
-4. (planned) standalone LiteRT staging — currently the LiteRT runtime
-   ships via LiteRT-LM's prebuilt `libLiteRt.dll`. A separate script to
-   stage LiteRT's public C API headers (`litert/c/litert_*.h`) from
-   `vendor/LiteRT/` into `Source/ThirdParty/LiteRT/Public/` is on the
-   to-do list.
-
-UE's normal build (`Setup.bat` → editor build) **does not** invoke
-Bazel. It just links against the already-staged outputs. If those
-outputs aren't on disk yet, UE's link step fails with "library not
-found" — the fix is "run the Bazel script".
 
 ## How other plugins consume this
 
-In another plugin's `Build.cs`:
+In a consumer plugin's `Build.cs`:
 
 ```csharp
 PublicDependencyModuleNames.AddRange(new string[] {
-    "LiteRTLM",   // exposes <litert/lm/engine.h> + delay-loaded LiteRtLm.dll
-    "LiteRT",     // exposes the standalone LiteRT C API
+    "InoLiteRT",   // exposes <litert/c/litert_*.h> + <litert/lm/engine.h>,
+                   // links the import libs, declares delay-load DLLs, stages
+                   // RuntimeDependencies for cook/package.
 });
 ```
 
-That's it — no Bazel knowledge required, no DLL loading. The runtime
-DLL preload + `set_min_log_level` smoke test happen in
-`ino_lite_rt_ue`'s `StartupModule`, which is set to load at
-`PreLoadingScreen` so the DLLs are mapped before any consumer's
-`StartupModule` runs.
+In its `.uplugin`:
+
+```json
+"Plugins": [
+    { "Name": "InoLiteRT", "Enabled": true }
+]
+```
+
+That's it — no Bazel knowledge, no DLL loading code in the consumer.
+`FInoLiteRTModule::StartupModule` runs at `LoadingPhase=PreLoadingScreen`
+which executes strictly before any consumer's `Default`-phase
+`StartupModule`, so by the time consumer code runs, the DLLs/.so are
+already mapped and callable. A `litert_lm_set_min_log_level(0)` smoke
+test at startup confirms the link.
+
+The first and currently only consumer is `Plugins/InoAgents/`.
 
 ## Target platforms
 
-| Platform        | LiteRT-LM | LiteRT   | Notes |
+| Platform              | LiteRT-LM    | LiteRT                | Notes |
 |---|---|---|---|
-| **Windows x64** | ✅ built  | (planned) | CPU + GPU via D3D12/WebGPU. `LiteRtLm.dll` + `libLiteRt.dll` + 3 prebuilt accelerator DLLs. |
-| **Android arm64-v8a** | ✅ built | (planned) | CPU + GPU via OpenCL/WebGPU. Monolithic `libLiteRtLm.so` + 6 prebuilt accelerator `.so`. |
-| iOS / Linux / macOS | ⏳ stubs | ⏳ stubs | Scaffold compiles; runtime calls fail gracefully. |
+| **Windows x64**       | ✅ shipping   | ✅ shipping            | CPU + GPU via D3D12/WebGPU. 5 DLLs total. |
+| **Android arm64-v8a** | ✅ shipping   | ✅ statically linked   | CPU + GPU via WebGPU/OpenCL. 7 .so files. Monolithic libLiteRtLm.so. |
+| **Android x86_64**    | ✅ shipping   | ✅ statically linked   | Same shape as arm64-v8a. For emulators / x86 Chromebooks. |
+| iOS / Linux / macOS   | ⏳ stubs only | ⏳ stubs only          | No library built. Consumer InoAgents has stub C API impls in `InoLiteRtLmStubs_NonWindows.cpp`. |
 
-## Status
+Backend selection at runtime is via the `backend_str` parameter to
+`litert_lm_engine_settings_create`: `"cpu"`, `"gpu"`, or `"npu"`. The
+upstream enum (`runtime/executor/executor_settings_base.h`) also accepts
+`"cpu_artisan"`, `"gpu_artisan"`, and `"google_tensor_artisan"` (legacy
+hand-written paths) — InoLiteRT does not expose those via its UE-side
+enum. NPU support exists in the upstream source for Android Qualcomm
+Hexagon but is untested on this pin. There is no DirectML, Vulkan, or
+Windows-NPU path.
 
-This plugin is a fresh extraction from the older `InoAgents` plugin —
-the LiteRT-LM build workspace, ThirdParty external module, runtime DLL
-loading, and Blueprint-facing subsystem/conversation/tool API are
-being moved in piece by piece. Until the move is complete, expect:
+GPU on Android is **untested** on the current pin; CPU works. Earlier
+docs claimed GPU was broken because the prebuilt accelerator `.so` files
+had a phantom `DT_NEEDED(libLiteRt.so)` — that's no longer true (verified:
+their `DT_NEEDED` lists only contain system libs + EGL/GLESv3). Whether
+GPU works end-to-end on a real device hasn't been verified.
 
-- Some path / name references in scripts and Build.cs files may still
-  use `InoAgents` / `InoAgentsLibrary` instead of `ino_lite_rt_ue` /
-  `LiteRTLM`. Grep before trusting any specific reference.
-- LiteRT-LM is built and shipping. Standalone LiteRT staging (just the
-  C API headers — the DLL is already shipped via LiteRT-LM's prebuilt)
-  is a TODO; `Source/ThirdParty/LiteRT/` exists but is empty.
-- The runtime UE module under `Source/ino_lite_rt_ue/` is currently
-  still the Epic-generated scaffold (`Fino_lite_rt_ueModule`, no real
-  startup logic yet). The DLL load order, log category, settings, and
-  Blueprint subsystem from the InoAgents version need to be ported.
+## Pinning: commit SHA, not release tag
+
+Both `LITERT_TAG` and `LITERT_LM_TAG` hold **40-character commit SHAs**,
+not release tags. LiteRT-LM is pre-1.0; many fixes land between tags.
+Pinning to SHAs lets us pick those up without waiting, while staying
+immutable and bisectable.
+
+`LITERT_TAG` must always match the `LITERT_REF` value in
+`vendor/LiteRT-LM/WORKSPACE`. When you bump LiteRT-LM, also bump LiteRT
+to whatever `LITERT_REF` the new LiteRT-LM commit pins. They move
+together.
+
+## Build flow
+
+The Bazel build is **outside** of UE's build pipeline. UE's normal build
+just links against the artifacts staged into `Source/ThirdParty/`. If
+those outputs aren't on disk yet, UE's link step fails with "library not
+found" — the fix is "run the Bazel script".
+
+### One-time setup (new dev machine)
+
+1. Enable Developer Mode: Settings → System → For developers → Developer Mode → On
+2. Install Visual Studio 2022 with the C++ workload
+3. Install bazelisk: `winget install Bazel.Bazelisk`
+4. Install Git for Windows (must be at `C:\Program Files\Git`)
+5. Install Python 3 (any 3.10+)
+6. Set `BAZEL_VC` user environment variable to `<VS install>\VC`, e.g.:
+   ```
+   C:\Program Files\Microsoft Visual Studio\2022\Community\VC
+   ```
+   (single backslashes — raw registry string, no escaping)
+7. (Android only) Install Android **NDK r28.x** (e.g. r28.2) via Android
+   Studio's SDK Manager → SDK Tools → NDK (Side by side) →
+   "Show Package Details" → pick a 28.x version → Apply.
+   We deliberately pin to r28.x — that's what upstream develops against.
+   UE 5.7's NDK (r27.2) is too old for LiteRT-LM and coexists at
+   `%LOCALAPPDATA%\Android\Sdk\ndk\` as a separate subdirectory.
+8. Run `.\scripts\setup.ps1` to apply the overlay, verify the LiteRT-LM
+   submodule, and create the three short Bazel output bases.
+
+### Bazel output bases (Windows MAX_PATH workaround)
+
+Windows MAX_PATH (260 chars) means we can't use long output base paths
+— Bazel's intermediate filenames (especially Rust proc-macro `.rcgu.o`
+files at ~220 chars) blow past the limit. Setup creates three short
+ones, one per build configuration:
+
+| Base               | Build                |
+|---|---|
+| `C:/b/ino-w-x64`   | Windows x86_64       |
+| `C:/b/ino-a-a64`   | Android arm64-v8a    |
+| `C:/b/ino-a-x64`   | Android x86_64       |
+
+Naming: `ino-<platform>-<arch>` where platform is `w` (windows) or `a`
+(android), and arch is `a64` (arm64-v8a) or `x64` (x86_64).
+
+### Building (Windows)
+
+```powershell
+cd Plugins/InoLiteRT/LiteRT
+.\scripts\build-win64.ps1
+```
+
+First cold build is ~30–60 minutes. Subsequent incremental builds are
+seconds.
+
+What it does:
+1. Runs `setup.ps1` (preflight + overlay).
+2. `bazelisk build //ino:LiteRtLm` against the LiteRT-LM submodule with
+   `--define=litert_link_capi_so=true` so LiteRT core ends up in a
+   separate `libLiteRt.dll` (matching the prebuilt's name).
+3. Copies the prebuilt `libLiteRt.dll` (from
+   `vendor/LiteRT-LM/prebuilt/windows_x86_64/`) and synthesizes
+   `libLiteRt.lib` from the DLL's export table using
+   `lib.exe /def:vendor/LiteRT/litert/c/windows_exported_symbols.def
+   /name:libLiteRt.dll /machine:x64`.
+4. Stages everything into `Source/ThirdParty/Win64/` and
+   `Source/ThirdParty/Public/`.
+
+### Building (Android)
+
+```powershell
+cd Plugins/InoLiteRT/LiteRT
+.\scripts\build-android.ps1                    # default: arm64-v8a (real devices)
+.\scripts\build-android.ps1 -Arch x86_64       # emulators / x86 Chromebooks
+```
+
+Cross-compiled from the Windows host. Auto-detects the highest installed
+NDK r28.x under `%LOCALAPPDATA%\Android\Sdk\ndk\` and points Bazel at it
+for the build only — your environment is not modified.
+
+What it does:
+1. NDK r28.x preflight.
+2. `setup.ps1`.
+3. `bazelisk build //ino:LiteRtLm --config=android_<arch>`. Deliberately
+   does NOT pass `--define=litert_link_capi_so=true` — upstream's
+   `--dynamic_mode=off` on Android force-links LiteRT core directly
+   into the monolithic `libLiteRtLm.so` (~52 MB), so no separate
+   `libLiteRt.so` is produced.
+4. Stages our `.so` plus the 6 prebuilt accelerator/constraint `.so`
+   files into `Source/ThirdParty/Android/<arch>/`.
+
+The Win64 build splits LiteRT core into a separate DLL via
+`--define=litert_link_capi_so=true`. The Android build does NOT pass
+that flag because upstream's `build:android` config sets
+`--dynamic_mode=off` which force-statics everything into one monolithic
+`libLiteRtLm.so`. There is no `libLiteRt.so` on Android.
+
+### Updating LiteRT-LM (and LiteRT along with it)
+
+```powershell
+# Pin to a release tag:
+.\scripts\update-litert.ps1 v0.11.0
+
+# Pin to an explicit commit SHA:
+.\scripts\update-litert.ps1 4dbbf9375f52ad9738b80c9c1a12d671a0f5ffb6
+
+# Pin to whatever's currently on main:
+.\scripts\update-litert.ps1 main
+```
+
+The script:
+1. `git fetch --tags origin` inside the LiteRT-LM submodule
+2. `git checkout <Ref>` — works for tags, SHAs, branches
+3. Resolves to a 40-char SHA via `git rev-parse HEAD`
+4. Writes the resolved SHA into `LITERT_LM_TAG`
+5. Re-runs `build-win64.ps1`
+
+**Manual steps required after:**
+
+1. **Bump the LiteRT submodule.** The script does not yet do this
+   automatically. Open `vendor/LiteRT-LM/WORKSPACE`, find the new
+   `LITERT_REF`, then:
+   ```powershell
+   git -C vendor/LiteRT checkout <new LITERT_REF>
+   Set-Content LITERT_TAG "<new LITERT_REF>`n" -NoNewline:$false
+   ```
+   Otherwise LiteRT's vendored source headers will drift from the LiteRT
+   binary actually shipped by LiteRT-LM, and consumer code may compile
+   against newer/older API surfaces than the DLL implements.
+
+2. **Rebuild Android too.** `update-litert.ps1` only re-runs the Win64
+   build. For Android, run the Android script(s) separately:
+   ```powershell
+   .\scripts\build-android.ps1                    # arm64-v8a
+   .\scripts\build-android.ps1 -Arch x86_64       # if you ship x86_64
+   ```
+   Forgetting this means Win64 binaries from the new SHA + Android
+   binaries from the old SHA, which usually crashes on launch with
+   opaque dynamic-linker errors.
+
+Commit the submodule pointers + both `*_TAG` files only after all
+relevant platform builds succeed and UE actually loads the resulting
+DLLs/.so.
+
+### Cleaning
+
+```powershell
+.\scripts\clean.ps1
+```
+
+Runs `bazelisk clean --expunge` for each output base that exists
+(Win64, Android arm64-v8a, Android x86_64). Skips bases that don't
+exist on disk. Disk caches (the content-addressed kind, separate
+from output bases) are intentionally NOT wiped — they survive across
+expunges and speed up cold rebuilds.
+
+## Bazel target
+
+The build produces `//ino:LiteRtLm` — a `cc_binary(linkshared=1)`
+depending on `//c:engine` (the full CPU + GPU target, not the smaller
+`//c:engine_cpu`). On Windows the GPU path is WebGPU → D3D12 via
+upstream's prebuilt `libLiteRtWebGpuAccelerator.dll`; on Android it's
+WebGPU **and** OpenCL prebuilts so the engine can pick whichever the
+device supports.
+
+## Do not edit files inside `vendor/`
+
+Both submodules are upstream code. Our own customizations live in
+`overlay/` and are copied into `vendor/LiteRT-LM/` at setup time.
+`setup.ps1` updates the submodule's `.git/info/exclude` so the overlay
+files don't show as dirty in the submodule's working tree.
+
+When upgrading LiteRT-LM, two things may need attention in the overlay:
+
+- **`overlay/ino/BUILD.bazel`** — verify `//c:engine` is still the right
+  target. Upstream renames packages occasionally.
+- **`overlay/ino/LiteRtLm_exports.cc`** — the force-reference array
+  must list every `LITERT_LM_C_API_EXPORT`-marked function in the new
+  `c/engine.h`. Re-extract via the awk one-liner in the file's own
+  comment block. A missing entry results in that symbol silently
+  dropping from the DLL — the build succeeds, callers fail at runtime.
 
 ## Authoritative references
 
 - Upstream LiteRT-LM: https://github.com/google-ai-edge/LiteRT-LM
 - Upstream LiteRT: https://github.com/google-ai-edge/LiteRT
-- LiteRT-LM C API header: `LiteRT/vendor/LiteRT-LM/c/engine.h`
-- LiteRT C API headers: `LiteRT/vendor/LiteRT/litert/c/litert_*.h`
+- LiteRT-LM C API header (canonical, in submodule):
+  `LiteRT/vendor/LiteRT-LM/c/engine.h`
+- LiteRT-LM C API header (staged copy consumers `#include`):
+  `Source/ThirdParty/Public/litert/lm/engine.h`
+- LiteRT C API headers: `Source/ThirdParty/Public/litert/c/litert_*.h`
 - Pinned LiteRT-LM commit: see `LiteRT/LITERT_LM_TAG`
-- Pinned LiteRT commit: see `LiteRT/LITERT_TAG` (must match `vendor/LiteRT-LM/WORKSPACE`'s `LITERT_REF`)
-- Build details (Bazel toolchain, MAX_PATH workarounds, NDK story):
-  see comments inline in `LiteRT/scripts/*.ps1` and the upstream
-  CI `.github/workflows/ci-build-*.yml`.
+- Pinned LiteRT commit: see `LiteRT/LITERT_TAG` (must match
+  `vendor/LiteRT-LM/WORKSPACE`'s `LITERT_REF`)
