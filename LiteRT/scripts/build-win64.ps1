@@ -36,7 +36,7 @@ if ($LASTEXITCODE -ne 0) { throw "setup.ps1 failed" }
 # possible:
 #
 #   - Short --output_base to keep intermediate paths under Windows MAX_PATH
-#     (upstream uses D:/w-<hash>/; we use C:/b/ino-litert-lm)
+#     (upstream uses D:/w-<hash>/; we use C:/b/ino-w-x64)
 #   - --disk_cache for persistent action caching across workspaces and expunges
 #   - Do NOT pass --config=windows explicitly — upstream's .bazelrc has
 #     'build --enable_platform_specific_config' which auto-applies the windows
@@ -47,8 +47,8 @@ if ($LASTEXITCODE -ne 0) { throw "setup.ps1 failed" }
 #     avoid androidndk rules trying to create symlinks in a host NDK install.
 #     Only affects this child process; user's global env is untouched.
 
-$LiteRtLmOutputBase = "C:/b/ino-litert-lm"
-$LiteRtLmDiskCache  = "C:/b/ino-litert-lm-cache"
+$LiteRtLmOutputBase = "C:/b/ino-w-x64"
+$LiteRtLmDiskCache  = "C:/b/ino-w-x64-cache"
 
 Write-Host ""
 Write-Host "=== Bazel build: LiteRT-LM ===" -ForegroundColor Cyan

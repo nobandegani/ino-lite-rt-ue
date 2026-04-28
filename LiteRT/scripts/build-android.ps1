@@ -155,8 +155,25 @@ if ($LASTEXITCODE -ne 0) { throw "setup.ps1 failed" }
 
 # Per-architecture output base + disk cache so different ABI builds
 # don't thrash the same Bazel action cache.
-$BazelOutputBase = "C:/b/ino-litert-lm-android-$Arch"
-$BazelDiskCache  = "C:/b/ino-litert-lm-android-$Arch-cache"
+#
+# Naming scheme: C:/b/ino-<platform>-<arch>
+#   ino-a-a64    Android arm64-v8a
+#   ino-a-x64    Android x86_64
+#   ino-w-x64    Windows x86_64       (set in build-win64.ps1)
+#
+# Short names are mandatory on Windows due to MAX_PATH (260 chars).
+# Cross-compile builds put host outputs under
+# bazel-out/x64_windows-opt-exec-ST-<hash>/bin/... which is ~25 chars
+# longer than the Win64 native bazel-out/x64_windows-opt/bin/...
+# Combined with Rust proc-macro intermediate filenames (~220 chars,
+# e.g. macro_rules_attribute_proc_macro-...-cgu.0.rcgu.o), only a
+# very short output base prefix keeps total paths under 260 chars.
+$ShortArch = switch ($Arch) {
+    "arm64-v8a" { "a64" }
+    "x86_64"    { "x64" }
+}
+$BazelOutputBase = "C:/b/ino-a-$ShortArch"
+$BazelDiskCache  = "C:/b/ino-a-$ShortArch-cache"
 
 Write-Host ""
 Write-Host "=== Bazel build: LiteRT-LM (Android $Arch) ===" -ForegroundColor Cyan

@@ -24,9 +24,9 @@ if (-not (Test-Path $SubmoduleDir)) {
 }
 
 $OutputBases = @(
-    @{ Name = "Win64";              Base = "C:/b/ino-litert-lm" }
-    @{ Name = "Android arm64-v8a";  Base = "C:/b/ino-litert-lm-android-arm64-v8a" }
-    @{ Name = "Android x86_64";     Base = "C:/b/ino-litert-lm-android-x86_64" }
+    @{ Name = "Windows x86_64";     Base = "C:/b/ino-w-x64" }
+    @{ Name = "Android arm64-v8a";  Base = "C:/b/ino-a-a64" }
+    @{ Name = "Android x86_64";     Base = "C:/b/ino-a-x64" }
 )
 
 foreach ($ob in $OutputBases) {

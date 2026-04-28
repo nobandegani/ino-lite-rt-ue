@@ -93,9 +93,9 @@ try {
 # Android x86_64. (LiteRT itself is NOT built from source — see
 # build-win64.ps1 — so no separate output base for it.)
 $OutputBases = @(
-    "C:/b/ino-litert-lm",
-    "C:/b/ino-litert-lm-android-arm64-v8a",
-    "C:/b/ino-litert-lm-android-x86_64"
+    "C:/b/ino-w-x64",   # Windows x86_64
+    "C:/b/ino-a-a64",   # Android arm64-v8a
+    "C:/b/ino-a-x64"    # Android x86_64
 )
 foreach ($base in $OutputBases) {
     if (-not (Test-Path $base)) {
