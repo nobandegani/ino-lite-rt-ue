@@ -4,11 +4,17 @@
 # the ino_lite_rt_ue plugin under Source/ThirdParty/{Win64,Public}.
 #
 # LiteRT itself is NOT built from source — we use the prebuilt libLiteRt.dll
-# Google ships inside the LiteRT-LM submodule (prebuilt/windows_x86_64/) and
-# generate the matching libLiteRt.lib import library from the .def file in
-# the LiteRT submodule via lib.exe. That skips a 30+ minute Bazel build for
-# zero loss in the public C API surface (exports are identical to a
-# from-source build).
+# Google ships inside the LiteRT-LM submodule (prebuilt/windows_x86_64/)
+# and synthesize the matching libLiteRt.lib import library from the DLL's
+# actual export table via dumpbin + lib.exe. That skips a 30+ minute
+# Bazel build for zero loss in the public C API surface (exports are
+# identical to a from-source build).
+#
+# LiteRT headers (litert/c/*.h, litert/c/internal/*.h, litert/build_common/
+# config/*.h) are read from Bazel's external-fetch of the LiteRT repo —
+# vendor/LiteRT-LM/bazel-litert-lm/external/litert/ — pinned by
+# WORKSPACE's LITERT_REF. No separate vendor/LiteRT submodule is needed:
+# the WORKSPACE pin is the single source of truth for both DLL and headers.
 #
 # Step order:
 #   1. setup.ps1                              (preflight + overlay)
@@ -19,8 +25,15 @@ $ErrorActionPreference = "Stop"
 
 $ScriptDir       = Split-Path -Parent $MyInvocation.MyCommand.Path
 $WorkspaceDir    = (Resolve-Path (Join-Path $ScriptDir "..")).Path
-$LiteRtSubDir    = Join-Path $WorkspaceDir "vendor\LiteRT"
 $LiteRtLmSubDir  = Join-Path $WorkspaceDir "vendor\LiteRT-LM"
+# LiteRT headers come from Bazel's external-fetch copy of LiteRT, pulled
+# automatically via vendor/LiteRT-LM/WORKSPACE's LITERT_REF when Bazel
+# builds //ino:LiteRtLm. The bazel-litert-lm/ symlink is a Bazel
+# convenience that resolves to <output_base>/external/litert. Using it
+# instead of a separate vendor/LiteRT submodule guarantees the staged
+# headers can never drift out of sync with the DLL the same Bazel run
+# produced — both come from the single SHA pinned in WORKSPACE.
+$LiteRtSubDir    = Join-Path $LiteRtLmSubDir "bazel-litert-lm\external\litert"
 $PluginDir       = (Resolve-Path (Join-Path $WorkspaceDir "..")).Path
 
 #---------------------------------------------------------------------
@@ -106,11 +119,12 @@ foreach ($d in @($Win64Dst, $LiteRtHdrDst, $LiteRtIntHdrDst, $LiteRtLmHdrDst, $L
 # libLiteRt.dll from LiteRT-LM's submodule and synthesize the matching
 # import library from the DLL's actual export table.
 #
-# We INTENTIONALLY do not use vendor/LiteRT/litert/c/windows_exported_symbols.def
-# for this — that file is a curated subset (~230 symbols) maintained by Google
-# for their internal binaries' link needs, not the full DLL surface
-# (~424 symbols). Generating an import lib from the DLL's exports directly
-# guarantees consumer code can link against everything the DLL provides.
+# We INTENTIONALLY do not use upstream's
+# litert/c/windows_exported_symbols.def — that file is a curated subset
+# (~230 symbols) maintained by Google for their internal binaries' link
+# needs, not the full DLL surface (~424 symbols). Generating an import
+# lib from the DLL's exports directly guarantees consumer code can link
+# against everything the DLL provides.
 $LiteRtPrebuiltDll = Join-Path $LiteRtLmSubDir "prebuilt\windows_x86_64\libLiteRt.dll"
 if (-not (Test-Path $LiteRtPrebuiltDll)) {
     throw "Expected prebuilt libLiteRt.dll not found at $LiteRtPrebuiltDll"

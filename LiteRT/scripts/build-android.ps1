@@ -19,6 +19,11 @@
 # upstream's --dynamic_mode=off statically links LiteRT core into the
 # monolithic libLiteRtLm.so on Android, so unlike Win64 there is no
 # separate libLiteRt.so or matching import library.
+#
+# LiteRT headers (litert/c/*.h, litert/c/internal/*.h, litert/build_common/
+# config/*.h) are read from Bazel's external-fetch of the LiteRT repo
+# (vendor/LiteRT-LM/bazel-litert-lm/external/litert/), pinned by
+# WORKSPACE's LITERT_REF. No separate vendor/LiteRT submodule is needed.
 
 param(
     [ValidateSet("arm64-v8a", "x86_64")]
@@ -43,8 +48,15 @@ switch ($Arch) {
 
 $ScriptDir      = Split-Path -Parent $MyInvocation.MyCommand.Path
 $WorkspaceDir   = (Resolve-Path (Join-Path $ScriptDir "..")).Path
-$LiteRtSubDir   = Join-Path $WorkspaceDir "vendor\LiteRT"
 $LiteRtLmSubDir = Join-Path $WorkspaceDir "vendor\LiteRT-LM"
+# LiteRT headers come from Bazel's external-fetch copy of LiteRT, pulled
+# automatically via vendor/LiteRT-LM/WORKSPACE's LITERT_REF when Bazel
+# builds //ino:LiteRtLm. The bazel-litert-lm/ symlink is a Bazel
+# convenience that resolves to <output_base>/external/litert. Using it
+# instead of a separate vendor/LiteRT submodule guarantees the staged
+# headers can never drift out of sync with the .so the same Bazel run
+# produced — both come from the single SHA pinned in WORKSPACE.
+$LiteRtSubDir   = Join-Path $LiteRtLmSubDir "bazel-litert-lm\external\litert"
 $PluginDir      = (Resolve-Path (Join-Path $WorkspaceDir "..")).Path
 
 #---------------------------------------------------------------------

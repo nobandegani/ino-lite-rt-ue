@@ -1,6 +1,3 @@
 [submodule "LiteRT/vendor/LiteRT-LM"]
 	path = LiteRT/vendor/LiteRT-LM
 	url = https://github.com/google-ai-edge/LiteRT-LM.git
-[submodule "LiteRT/vendor/LiteRT"]
-	path = LiteRT/vendor/LiteRT
-	url = https://github.com/google-ai-edge/LiteRT.git

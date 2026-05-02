@@ -24,6 +24,16 @@ compile LiteRT ourselves. The matching Windows import library
 via MSVC's `lib.exe /def:` (faster than building LiteRT from source,
 exposes all ~424 public symbols).
 
+**LiteRT C API headers** (`litert/c/*.h`, `litert/c/internal/*.h`,
+`litert/build_common/config/*.h`) come from Bazel's external-fetch of
+the LiteRT repo, pulled automatically when Bazel builds
+`//ino:LiteRtLm`. The fetched copy lands at
+`vendor/LiteRT-LM/bazel-litert-lm/external/litert/`, pinned by
+`vendor/LiteRT-LM/WORKSPACE`'s `LITERT_REF`. We do not maintain a
+separate `vendor/LiteRT` submodule — `WORKSPACE` is the single source
+of truth for both the runtime DLL and the headers, so the two can
+never drift out of sync.
+
 Artifacts are staged into `Source/ThirdParty/{Win64,Android/<arch>,Public}/`.
 The single UE module (`InoLiteRT`) embeds all third-party wiring directly
 — no separate "ThirdParty external module" subdirectory. Consumer plugins
@@ -42,7 +52,6 @@ Plugins/InoLiteRT/
 ├── InoLiteRT.uplugin                    ← UE plugin manifest (LoadingPhase=PreLoadingScreen)
 │
 ├── LiteRT/                              ← Bazel build workspace
-│   ├── LITERT_TAG                       ← pinned LiteRT commit SHA (matches LiteRT-LM's LITERT_REF)
 │   ├── LITERT_LM_TAG                    ← pinned LiteRT-LM commit SHA
 │   ├── overlay/ino/                     ← files staged into the LiteRT-LM submodule before build
 │   │   ├── BUILD.bazel                  ← //ino:LiteRtLm cc_binary target
@@ -54,8 +63,10 @@ Plugins/InoLiteRT/
 │   │   ├── update-litert.ps1            ← bump LiteRT-LM submodule + rebuild
 │   │   └── clean.ps1                    ← wipe Bazel caches
 │   └── vendor/
-│       ├── LiteRT/                      ← git submodule (header staging + windows .def)
-│       └── LiteRT-LM/                   ← git submodule (Bazel builds this)
+│       └── LiteRT-LM/                   ← git submodule (Bazel builds this; LiteRT
+│                                          itself is fetched into Bazel's external/
+│                                          tree via WORKSPACE's LITERT_REF, no
+│                                          separate submodule needed)
 │
 └── Source/
     ├── InoLiteRT/                       ← The single UE module
@@ -140,15 +151,18 @@ GPU works end-to-end on a real device hasn't been verified.
 
 ## Pinning: commit SHA, not release tag
 
-Both `LITERT_TAG` and `LITERT_LM_TAG` hold **40-character commit SHAs**,
-not release tags. LiteRT-LM is pre-1.0; many fixes land between tags.
-Pinning to SHAs lets us pick those up without waiting, while staying
-immutable and bisectable.
+`LITERT_LM_TAG` holds a **40-character commit SHA**, not a release tag.
+LiteRT-LM is pre-1.0; many fixes land between tags. Pinning to a SHA
+lets us pick those up without waiting, while staying immutable and
+bisectable.
 
-`LITERT_TAG` must always match the `LITERT_REF` value in
-`vendor/LiteRT-LM/WORKSPACE`. When you bump LiteRT-LM, also bump LiteRT
-to whatever `LITERT_REF` the new LiteRT-LM commit pins. They move
-together.
+The matching LiteRT version is pinned by `vendor/LiteRT-LM/WORKSPACE`'s
+`LITERT_REF` — Bazel reads that value, downloads the LiteRT tarball,
+and unpacks it into `bazel-litert-lm/external/litert/`. The same fetch
+is the source for both the prebuilt DLLs (which ride along inside
+LiteRT-LM's `prebuilt/` folder, also pinned to the WORKSPACE SHA) and
+the headers we stage. Single SHA, single source of truth; no manual
+sync step.
 
 ## Build flow
 
@@ -208,14 +222,22 @@ What it does:
 1. Runs `setup.ps1` (preflight + overlay).
 2. `bazelisk build //ino:LiteRtLm` against the LiteRT-LM submodule with
    `--define=litert_link_capi_so=true` so LiteRT core ends up in a
-   separate `libLiteRt.dll` (matching the prebuilt's name).
+   separate `libLiteRt.dll` (matching the prebuilt's name). Bazel also
+   fetches the LiteRT source tarball at this point (the SHA pinned by
+   `WORKSPACE`'s `LITERT_REF`) and unpacks it under
+   `vendor/LiteRT-LM/bazel-litert-lm/external/litert/`.
 3. Copies the prebuilt `libLiteRt.dll` (from
    `vendor/LiteRT-LM/prebuilt/windows_x86_64/`) and synthesizes
-   `libLiteRt.lib` from the DLL's export table using
-   `lib.exe /def:vendor/LiteRT/litert/c/windows_exported_symbols.def
-   /name:libLiteRt.dll /machine:x64`.
-4. Stages everything into `Source/ThirdParty/Win64/` and
-   `Source/ThirdParty/Public/`.
+   `libLiteRt.lib` from the DLL's export table directly via dumpbin +
+   `lib.exe /def:`. We deliberately do NOT use upstream's
+   `litert/c/windows_exported_symbols.def` for this — that file is a
+   curated subset (~230 symbols) maintained for Google's internal
+   binaries' link needs, not the full DLL surface (~424 symbols).
+4. Stages the LiteRT C API headers from the Bazel-fetched tree
+   (`vendor/LiteRT-LM/bazel-litert-lm/external/litert/litert/c/`) into
+   `Source/ThirdParty/Public/litert/`, alongside `libLiteRt.dll`/`.lib`
+   in `Source/ThirdParty/Win64/`. Same SHA the DLL was built against,
+   guaranteed.
 
 ### Building (Android)
 
@@ -268,18 +290,7 @@ The script:
 
 **Manual steps required after:**
 
-1. **Bump the LiteRT submodule.** The script does not yet do this
-   automatically. Open `vendor/LiteRT-LM/WORKSPACE`, find the new
-   `LITERT_REF`, then:
-   ```powershell
-   git -C vendor/LiteRT checkout <new LITERT_REF>
-   Set-Content LITERT_TAG "<new LITERT_REF>`n" -NoNewline:$false
-   ```
-   Otherwise LiteRT's vendored source headers will drift from the LiteRT
-   binary actually shipped by LiteRT-LM, and consumer code may compile
-   against newer/older API surfaces than the DLL implements.
-
-2. **Rebuild Android too.** `update-litert.ps1` only re-runs the Win64
+1. **Rebuild Android too.** `update-litert.ps1` only re-runs the Win64
    build. For Android, run the Android script(s) separately:
    ```powershell
    .\scripts\build-android.ps1                    # arm64-v8a
@@ -289,7 +300,7 @@ The script:
    binaries from the old SHA, which usually crashes on launch with
    opaque dynamic-linker errors.
 
-Commit the submodule pointers + both `*_TAG` files only after all
+Commit the submodule pointer + `LITERT_LM_TAG` only after all
 relevant platform builds succeed and UE actually loads the resulting
 DLLs/.so.
 
@@ -341,5 +352,6 @@ When upgrading LiteRT-LM, two things may need attention in the overlay:
   `Source/ThirdParty/Public/litert/lm/engine.h`
 - LiteRT C API headers: `Source/ThirdParty/Public/litert/c/litert_*.h`
 - Pinned LiteRT-LM commit: see `LiteRT/LITERT_LM_TAG`
-- Pinned LiteRT commit: see `LiteRT/LITERT_TAG` (must match
-  `vendor/LiteRT-LM/WORKSPACE`'s `LITERT_REF`)
+- Pinned LiteRT commit: see `LiteRT/vendor/LiteRT-LM/WORKSPACE`'s
+  `LITERT_REF` (Bazel reads it; we don't keep a separate file or
+  submodule for the LiteRT pin)
