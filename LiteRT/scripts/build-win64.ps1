@@ -88,12 +88,13 @@ try {
 Write-Host ""
 Write-Host "=== Staging artifacts ===" -ForegroundColor Cyan
 
-$Win64Dst        = Join-Path $PluginDir "Source\ThirdParty\Win64"
-$LiteRtHdrDst    = Join-Path $PluginDir "Source\ThirdParty\Public\litert\c"
-$LiteRtIntHdrDst = Join-Path $LiteRtHdrDst "internal"
-$LiteRtLmHdrDst  = Join-Path $PluginDir "Source\ThirdParty\Public\litert\lm"
+$Win64Dst         = Join-Path $PluginDir "Source\ThirdParty\Win64"
+$LiteRtHdrDst     = Join-Path $PluginDir "Source\ThirdParty\Public\litert\c"
+$LiteRtIntHdrDst  = Join-Path $LiteRtHdrDst "internal"
+$LiteRtLmHdrDst   = Join-Path $PluginDir "Source\ThirdParty\Public\litert\lm"
+$LiteRtBuildHdrDst = Join-Path $PluginDir "Source\ThirdParty\Public\litert\build_common"
 
-foreach ($d in @($Win64Dst, $LiteRtHdrDst, $LiteRtIntHdrDst, $LiteRtLmHdrDst)) {
+foreach ($d in @($Win64Dst, $LiteRtHdrDst, $LiteRtIntHdrDst, $LiteRtLmHdrDst, $LiteRtBuildHdrDst)) {
     if (-not (Test-Path $d)) {
         New-Item -ItemType Directory -Path $d -Force | Out-Null
     }
@@ -259,6 +260,28 @@ if (Test-Path $lmHeader) {
     Write-Host "  [STAGE] litert/lm/engine.h -> $LiteRtLmHdrDst"
 } else {
     Write-Warning "Expected header not found at $lmHeader"
+}
+
+# --- Header: LiteRT build_config.h (feature-toggle gate) ---
+# litert/c/litert_common.h:20 includes <litert/build_common/build_config.h>,
+# which upstream generates at Bazel-build time by selecting one of
+# litert/build_common/config/build_config_*.h based on the configured
+# feature set. We don't run that generator step (the configured Bazel build
+# produces the .dll/.so but doesn't write this header into a path we stage),
+# so we instead copy the matching variant directly.
+#
+# Variant choice: build_config_gpu.h — defines LITERT_DISABLE_NPU and
+# leaves GPU enabled, matching what InoLiteRT actually ships on Win64
+# (libLiteRtWebGpuAccelerator.dll, libLiteRtTopKWebGpuSampler.dll, no NPU
+# accelerators). The cpu_only variant would also disable LITERT_HAS_GPU
+# checks consumers may rely on; the gpu_npu / npu variants include NPU
+# code paths that aren't built into our DLLs.
+$buildConfigSrc = Join-Path $LiteRtSubDir "litert\build_common\config\build_config_gpu.h"
+if (Test-Path $buildConfigSrc) {
+    Copy-Item -Path $buildConfigSrc -Destination (Join-Path $LiteRtBuildHdrDst "build_config.h") -Force
+    Write-Host "  [STAGE] litert/build_common/build_config.h (from build_config_gpu.h) -> $LiteRtBuildHdrDst"
+} else {
+    Write-Warning "Expected header not found at $buildConfigSrc"
 }
 
 Write-Host ""

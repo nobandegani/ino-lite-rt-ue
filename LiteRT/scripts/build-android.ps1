@@ -264,12 +264,13 @@ try {
 Write-Host ""
 Write-Host "=== Staging artifacts ===" -ForegroundColor Cyan
 
-$ArchDst         = Join-Path $PluginDir "Source\ThirdParty\Android\$Arch"
-$LiteRtHdrDst    = Join-Path $PluginDir "Source\ThirdParty\Public\litert\c"
-$LiteRtIntHdrDst = Join-Path $LiteRtHdrDst "internal"
-$LiteRtLmHdrDst  = Join-Path $PluginDir "Source\ThirdParty\Public\litert\lm"
+$ArchDst          = Join-Path $PluginDir "Source\ThirdParty\Android\$Arch"
+$LiteRtHdrDst     = Join-Path $PluginDir "Source\ThirdParty\Public\litert\c"
+$LiteRtIntHdrDst  = Join-Path $LiteRtHdrDst "internal"
+$LiteRtLmHdrDst   = Join-Path $PluginDir "Source\ThirdParty\Public\litert\lm"
+$LiteRtBuildHdrDst = Join-Path $PluginDir "Source\ThirdParty\Public\litert\build_common"
 
-foreach ($d in @($ArchDst, $LiteRtHdrDst, $LiteRtIntHdrDst, $LiteRtLmHdrDst)) {
+foreach ($d in @($ArchDst, $LiteRtHdrDst, $LiteRtIntHdrDst, $LiteRtLmHdrDst, $LiteRtBuildHdrDst)) {
     if (-not (Test-Path $d)) {
         New-Item -ItemType Directory -Path $d -Force | Out-Null
     }
@@ -358,6 +359,26 @@ if (Test-Path $lmHeader) {
     Write-Host "  [STAGE] litert/lm/engine.h -> $LiteRtLmHdrDst"
 } else {
     Write-Warning "Expected header not found at $lmHeader"
+}
+
+# --- Header: LiteRT build_config.h (feature-toggle gate) ---
+# Same rationale as build-win64.ps1: litert_common.h:20 includes
+# <litert/build_common/build_config.h>, which upstream generates at
+# Bazel-build time by selecting one of litert/build_common/config/
+# build_config_*.h. We copy the matching variant directly.
+#
+# Variant choice: build_config_gpu.h — defines LITERT_DISABLE_NPU and
+# leaves GPU enabled. Matches what InoLiteRT actually ships on Android
+# (libLiteRtGpuAccelerator.so + libLiteRtOpenClAccelerator.so +
+# libLiteRtWebGpuAccelerator.so + samplers, no NPU accelerators). Both
+# arm64-v8a and x86_64 ship the same GPU-enabled / NPU-disabled set,
+# so the same header is correct for both.
+$buildConfigSrc = Join-Path $LiteRtSubDir "litert\build_common\config\build_config_gpu.h"
+if (Test-Path $buildConfigSrc) {
+    Copy-Item -Path $buildConfigSrc -Destination (Join-Path $LiteRtBuildHdrDst "build_config.h") -Force
+    Write-Host "  [STAGE] litert/build_common/build_config.h (from build_config_gpu.h) -> $LiteRtBuildHdrDst"
+} else {
+    Write-Warning "Expected header not found at $buildConfigSrc"
 }
 
 Write-Host ""
