@@ -25,14 +25,21 @@ via MSVC's `lib.exe /def:` (faster than building LiteRT from source,
 exposes all ~424 public symbols).
 
 **LiteRT C API headers** (`litert/c/*.h`, `litert/c/internal/*.h`,
-`litert/build_common/config/*.h`) come from Bazel's external-fetch of
-the LiteRT repo, pulled automatically when Bazel builds
-`//ino:LiteRtLm`. The fetched copy lands at
+`litert/c/options/*.h`, `litert/build_common/config/*.h`) come from
+Bazel's external-fetch of the LiteRT repo, pulled automatically when
+Bazel builds `//ino:LiteRtLm`. The fetched copy lands at
 `vendor/LiteRT-LM/bazel-litert-lm/external/litert/`, pinned by
-`vendor/LiteRT-LM/WORKSPACE`'s `LITERT_REF`. We do not maintain a
-separate `vendor/LiteRT` submodule — `WORKSPACE` is the single source
-of truth for both the runtime DLL and the headers, so the two can
-never drift out of sync.
+`vendor/LiteRT-LM/WORKSPACE`'s `LITERT_REF`. That's what the build
+scripts actually read from when staging headers, so the staged headers
+always match the DLL Bazel built against.
+
+In parallel, we also keep `vendor/LiteRT/` as a git submodule — a
+manually-managed working tree of the LiteRT repo, pinned to the **same
+SHA** as `LITERT_REF`. The submodule is for source visibility (IDE
+browsing, debugging, inspecting the C API in context); the build
+pipeline does NOT read from it. Bazel still uses its own external
+fetch. Keeping the submodule and `LITERT_REF` in sync is a manual
+discipline — see "Updating LiteRT-LM" below.
 
 Artifacts are staged into `Source/ThirdParty/{Win64,Android/<arch>,Public}/`.
 The single UE module (`InoLiteRT`) embeds all third-party wiring directly
@@ -62,10 +69,16 @@ Plugins/InoLiteRT/
 │   │   ├── build-android.ps1            ← build + stage Android (-Arch arm64-v8a|x86_64)
 │   │   └── clean.ps1                    ← wipe Bazel caches
 │   └── vendor/
-│       └── LiteRT-LM/                   ← git submodule (Bazel builds this; LiteRT
-│                                          itself is fetched into Bazel's external/
-│                                          tree via WORKSPACE's LITERT_REF, no
-│                                          separate submodule needed)
+│       ├── LiteRT-LM/                   ← git submodule (Bazel builds this; pinned by LITERT_LM_TAG)
+│       ├── LiteRT/                      ← git submodule (source visibility only; not what
+│       │                                  Bazel reads — Bazel re-fetches its own copy into
+│       │                                  LiteRT-LM/bazel-litert-lm/external/litert/ via
+│       │                                  LiteRT-LM/WORKSPACE's LITERT_REF. Keep this
+│       │                                  submodule's pointer in sync with LITERT_REF.)
+│       └── litert-torch/                ← git submodule (PyTorch→.tflite converter, dev-time
+│                                          tool only; not consumed at runtime. Pinned by
+│                                          release-date proximity to our LiteRT SHA — see
+│                                          "Pinning" below for the soft-compat rationale.)
 │
 └── Source/
     ├── InoLiteRT/                       ← The single UE module
@@ -161,8 +174,30 @@ The matching LiteRT version is pinned by `vendor/LiteRT-LM/WORKSPACE`'s
 and unpacks it into `bazel-litert-lm/external/litert/`. The same fetch
 is the source for both the prebuilt DLLs (which ride along inside
 LiteRT-LM's `prebuilt/` folder, also pinned to the WORKSPACE SHA) and
-the headers we stage. Single SHA, single source of truth; no manual
-sync step.
+the headers we stage.
+
+`vendor/LiteRT/` mirrors this SHA as a separate submodule pointer.
+That submodule is NOT what Bazel builds against — Bazel always uses
+its own external fetch. The submodule is purely a manually-curated
+view for browsing; **its pointer must be re-pinned to the new
+`LITERT_REF` whenever LiteRT-LM is updated**, or it will silently
+diverge from what's actually shipped.
+
+`vendor/litert-torch/` is a separate concern: it's the upstream
+PyTorch→`.tflite` converter (https://github.com/google-ai-edge/litert-torch).
+It's a Python-side dev tool, not consumed at runtime by UE — its
+output is `.tflite` files we'd ship as game data. Compatibility with
+our LiteRT pin is **soft, not SHA-locked**: upstream doesn't pin a
+LiteRT commit anywhere (its `setup.py` just lists
+`ai-edge-litert-nightly` with no version constraint), so the only
+practical anchor is **release-date proximity**. We pin to the
+litert-torch release whose tag date is closest to our LiteRT pin's
+commit date. The current pin is **`v0.9.0`** (2026-04-23), 4 days
+before our LiteRT SHA `47615eb6e` (2026-04-27). When LiteRT-LM is
+bumped, re-evaluate whether a newer litert-torch release lines up
+better — but a mismatch only manifests if a converter feature
+introduced after our LiteRT pin's date is used, so this is "review
+when convenient", not a hard sync.
 
 ## Build flow
 
@@ -271,12 +306,20 @@ that flag because upstream's `build:android` config sets
 ### Updating LiteRT-LM (and LiteRT along with it)
 
 The update flow is **manual** — there is no `update-litert.ps1` wrapper.
-LiteRT pins along with LiteRT-LM (its `WORKSPACE`'s `LITERT_REF` is the
-single source of truth for both the runtime and the headers), so bumping
-LiteRT-LM bumps LiteRT in the same step.
+LiteRT pins along with LiteRT-LM (LiteRT-LM's `WORKSPACE` has a
+`LITERT_REF` value that names the LiteRT commit Bazel will fetch and
+build against), so bumping LiteRT-LM bumps the LiteRT version in the
+same step. There are **two** SHAs you must touch each time:
+
+- The `LiteRT-LM` submodule pointer (and `LITERT_LM_TAG` mirroring it).
+- The `LiteRT` submodule pointer, re-pinned to whatever `LITERT_REF`
+  now reads as inside the newly-checked-out LiteRT-LM tree. Bazel will
+  fetch its own copy at `LITERT_REF` regardless, but the submodule is
+  what your IDE / source browser sees, so it must agree.
 
 ```powershell
-# 1. Move the submodule HEAD to the new ref. Works for tags, SHAs, branches.
+# 1. Move the LiteRT-LM submodule HEAD to the new ref. Works for tags,
+#    SHAs, branches.
 cd Plugins\InoLiteRT\LiteRT\vendor\LiteRT-LM
 git fetch --tags origin
 git checkout v0.11.0-rc.1                  # or a SHA, or 'main'
@@ -286,27 +329,54 @@ $sha = git rev-parse HEAD                  # 40-char commit SHA
 cd ..\..
 Set-Content LITERT_LM_TAG $sha
 
-# 3. Re-check the overlay's force-keep array. Re-extract the upstream
+# 3. Sync the LiteRT submodule to the new LITERT_REF. LiteRT-LM's
+#    WORKSPACE pins the LiteRT commit Bazel will fetch — we mirror
+#    that same SHA in our LiteRT submodule pointer for source
+#    visibility. They MUST agree, or your IDE will browse a different
+#    LiteRT than what Bazel actually builds against.
+$litertRef = (Select-String -Path vendor\LiteRT-LM\WORKSPACE `
+    -Pattern '^LITERT_REF\s*=\s*"([0-9a-f]+)"').Matches.Groups[1].Value
+git -C vendor\LiteRT fetch origin
+git -C vendor\LiteRT checkout $litertRef
+
+# 4. Re-check the overlay's force-keep array. Re-extract the upstream
 #    LITERT_LM_C_API_EXPORT list with the awk one-liner in
 #    overlay/ino/LiteRtLm_exports.cc's MAINTENANCE comment, diff against
 #    the existing array, and add any new entries. A missing entry
 #    silently drops that symbol from the DLL — the build succeeds, but
 #    callers fail at runtime.
 
-# 4. Rebuild every platform we ship. Don't skip any — Win64 binaries
+# 5. Rebuild every platform we ship. Don't skip any — Win64 binaries
 #    from the new SHA + Android binaries from the old SHA usually
 #    crashes on launch with opaque dynamic-linker errors.
 .\scripts\build-win64.ps1
 .\scripts\build-android.ps1                # arm64-v8a (default)
 .\scripts\build-android.ps1 -Arch x86_64   # if you ship x86_64
 
-# 5. Test in UE: launch the editor / package an Android build and
+# 6. Test in UE: launch the editor / package an Android build and
 #    confirm FInoLiteRTModule's startup smoke test
 #    (litert_lm_set_min_log_level) passes.
 
-# 6. Only after all that — commit the submodule pointer + LITERT_LM_TAG
-#    (and any overlay changes) in the InoLiteRT plugin repo.
+# 7. Only after all that — commit the submodule pointers
+#    (vendor/LiteRT-LM, vendor/LiteRT, plus vendor/litert-torch if you
+#    bumped it in step 7a below) + LITERT_LM_TAG + any overlay changes
+#    in the InoLiteRT plugin repo, in one cohesive commit so the SHAs
+#    always advance together.
 ```
+
+**7a. (Optional, soft-compat) Re-evaluate litert-torch.** litert-torch
+isn't SHA-locked to LiteRT, but if our LiteRT pin moved by more than
+a few weeks, check whether a newer litert-torch release is now a
+closer date match (its compatibility surface is the `.tflite` format,
+which is generally forward-compatible within LiteRT 2.x). To bump:
+
+```powershell
+git -C vendor\litert-torch fetch --tags origin
+git -C vendor\litert-torch checkout v0.X.Y     # whichever tag is closest in date
+```
+
+Skip this step if our LiteRT pin barely moved or no newer
+litert-torch tag has shipped since the current one.
 
 ### Cleaning
 
@@ -355,7 +425,13 @@ When upgrading LiteRT-LM, two things may need attention in the overlay:
 - LiteRT-LM C API header (staged copy consumers `#include`):
   `Source/ThirdParty/Public/litert/lm/engine.h`
 - LiteRT C API headers: `Source/ThirdParty/Public/litert/c/litert_*.h`
-- Pinned LiteRT-LM commit: see `LiteRT/LITERT_LM_TAG`
+- Pinned LiteRT-LM commit: see `LiteRT/LITERT_LM_TAG` (mirrors the
+  `LiteRT/vendor/LiteRT-LM` submodule pointer).
 - Pinned LiteRT commit: see `LiteRT/vendor/LiteRT-LM/WORKSPACE`'s
-  `LITERT_REF` (Bazel reads it; we don't keep a separate file or
-  submodule for the LiteRT pin)
+  `LITERT_REF`. The same SHA is mirrored as the `LiteRT/vendor/LiteRT`
+  submodule pointer (kept in sync manually — Bazel only reads
+  `LITERT_REF`, the submodule is for source visibility).
+- Pinned litert-torch tag: see `LiteRT/vendor/litert-torch` submodule
+  pointer. Soft-pinned by release-date proximity to the LiteRT SHA,
+  not a strict ABI match — see "Pinning" above for the rationale.
+- Upstream litert-torch: https://github.com/google-ai-edge/litert-torch
