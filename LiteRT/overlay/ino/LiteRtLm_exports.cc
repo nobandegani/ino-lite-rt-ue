@@ -45,6 +45,7 @@
 // and reconcile against this file. Counts at known SHAs:
 //   - v0.10.2                                   ->  44 functions
 //   - 4dbbf937 (post-v0.10.2 main, 2026-04-27)  ->  75 functions
+//   - v0.11.0-rc.1 (7d1923da, 2026-04-29)       ->  82 functions
 
 #include "c/engine.h"
 
@@ -61,13 +62,15 @@ volatile LiteRtLmFn kLiteRtLmForceKeep[] = {
     reinterpret_cast<LiteRtLmFn>(&litert_lm_session_config_set_sampler_params),
     reinterpret_cast<LiteRtLmFn>(&litert_lm_session_config_delete),
 
-    // Conversation config (7)
+    // Conversation config (9)
     reinterpret_cast<LiteRtLmFn>(&litert_lm_conversation_config_create),
     reinterpret_cast<LiteRtLmFn>(&litert_lm_conversation_config_set_session_config),
     reinterpret_cast<LiteRtLmFn>(&litert_lm_conversation_config_set_system_message),
     reinterpret_cast<LiteRtLmFn>(&litert_lm_conversation_config_set_tools),
     reinterpret_cast<LiteRtLmFn>(&litert_lm_conversation_config_set_messages),
+    reinterpret_cast<LiteRtLmFn>(&litert_lm_conversation_config_set_extra_context),
     reinterpret_cast<LiteRtLmFn>(&litert_lm_conversation_config_set_enable_constrained_decoding),
+    reinterpret_cast<LiteRtLmFn>(&litert_lm_conversation_config_set_filter_channel_content_from_kv_cache),
     reinterpret_cast<LiteRtLmFn>(&litert_lm_conversation_config_delete),
 
     // Logging (1)
@@ -91,18 +94,19 @@ volatile LiteRtLmFn kLiteRtLmForceKeep[] = {
     reinterpret_cast<LiteRtLmFn>(&litert_lm_engine_delete),
     reinterpret_cast<LiteRtLmFn>(&litert_lm_engine_create_session),
 
-    // Session lifecycle + advanced low-level (5)
+    // Session lifecycle + advanced low-level (6)
     reinterpret_cast<LiteRtLmFn>(&litert_lm_session_delete),
     reinterpret_cast<LiteRtLmFn>(&litert_lm_session_cancel_process),
     reinterpret_cast<LiteRtLmFn>(&litert_lm_session_run_prefill),
     reinterpret_cast<LiteRtLmFn>(&litert_lm_session_run_decode),
+    reinterpret_cast<LiteRtLmFn>(&litert_lm_session_run_decode_async),
     reinterpret_cast<LiteRtLmFn>(&litert_lm_session_run_text_scoring),
 
     // Session generation (2)
     reinterpret_cast<LiteRtLmFn>(&litert_lm_session_generate_content),
     reinterpret_cast<LiteRtLmFn>(&litert_lm_session_generate_content_stream),
 
-    // Responses (7)
+    // Responses (10)
     reinterpret_cast<LiteRtLmFn>(&litert_lm_responses_delete),
     reinterpret_cast<LiteRtLmFn>(&litert_lm_responses_get_num_candidates),
     reinterpret_cast<LiteRtLmFn>(&litert_lm_responses_get_response_text_at),
@@ -110,6 +114,9 @@ volatile LiteRtLmFn kLiteRtLmForceKeep[] = {
     reinterpret_cast<LiteRtLmFn>(&litert_lm_responses_get_score_at),
     reinterpret_cast<LiteRtLmFn>(&litert_lm_responses_has_token_length_at),
     reinterpret_cast<LiteRtLmFn>(&litert_lm_responses_get_token_length_at),
+    reinterpret_cast<LiteRtLmFn>(&litert_lm_responses_has_token_scores_at),
+    reinterpret_cast<LiteRtLmFn>(&litert_lm_responses_get_num_token_scores_at),
+    reinterpret_cast<LiteRtLmFn>(&litert_lm_responses_get_token_scores_at),
 
     // Benchmark info (10)
     reinterpret_cast<LiteRtLmFn>(&litert_lm_session_get_benchmark_info),
@@ -123,11 +130,12 @@ volatile LiteRtLmFn kLiteRtLmForceKeep[] = {
     reinterpret_cast<LiteRtLmFn>(&litert_lm_benchmark_info_get_prefill_tokens_per_sec_at),
     reinterpret_cast<LiteRtLmFn>(&litert_lm_benchmark_info_get_decode_tokens_per_sec_at),
 
-    // Conversation lifecycle + messaging (6)
+    // Conversation lifecycle + messaging (7)
     reinterpret_cast<LiteRtLmFn>(&litert_lm_conversation_create),
     reinterpret_cast<LiteRtLmFn>(&litert_lm_conversation_delete),
     reinterpret_cast<LiteRtLmFn>(&litert_lm_conversation_send_message),
     reinterpret_cast<LiteRtLmFn>(&litert_lm_conversation_send_message_stream),
+    reinterpret_cast<LiteRtLmFn>(&litert_lm_conversation_render_message_to_string),
     reinterpret_cast<LiteRtLmFn>(&litert_lm_conversation_cancel_process),
     reinterpret_cast<LiteRtLmFn>(&litert_lm_conversation_get_benchmark_info),
 
