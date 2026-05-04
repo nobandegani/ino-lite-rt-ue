@@ -63,6 +63,7 @@ public class InoLiteRT : ModuleRules
 		//
 		//     Source/ThirdParty/Public/litert/c/         LiteRT C API headers
 		//     Source/ThirdParty/Public/litert/c/internal/  LiteRT internal headers
+		//     Source/ThirdParty/Public/litert/c/options/   LiteRT per-vendor options headers
 		//     Source/ThirdParty/Public/litert/lm/        LiteRT-LM C API header
 		//     Source/ThirdParty/Win64/libLiteRt.lib      LiteRT import lib
 		//     Source/ThirdParty/Win64/LiteRtLm.lib       LiteRT-LM import lib

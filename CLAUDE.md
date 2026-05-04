@@ -60,7 +60,6 @@ Plugins/InoLiteRT/
 │   │   ├── setup.ps1                    ← one-time preflight + overlay application
 │   │   ├── build-win64.ps1              ← build + stage Win64 artifacts
 │   │   ├── build-android.ps1            ← build + stage Android (-Arch arm64-v8a|x86_64)
-│   │   ├── update-litert.ps1            ← bump LiteRT-LM submodule + rebuild
 │   │   └── clean.ps1                    ← wipe Bazel caches
 │   └── vendor/
 │       └── LiteRT-LM/                   ← git submodule (Bazel builds this; LiteRT
@@ -79,6 +78,7 @@ Plugins/InoLiteRT/
     └── ThirdParty/                      ← staged build outputs (consumed by UE)
         ├── Public/litert/c/             ← 27 LiteRT C API headers (consumer-visible)
         ├── Public/litert/c/internal/    ← 15 LiteRT internal headers
+        ├── Public/litert/c/options/     ← 11 LiteRT per-vendor option headers
         ├── Public/litert/lm/engine.h    ← LiteRT-LM C API header
         ├── Win64/                       ← 5 DLLs + 2 import libs
         │   ├── libLiteRt.{dll,lib}

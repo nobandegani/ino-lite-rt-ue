@@ -279,10 +279,11 @@ Write-Host "=== Staging artifacts ===" -ForegroundColor Cyan
 $ArchDst          = Join-Path $PluginDir "Source\ThirdParty\Android\$Arch"
 $LiteRtHdrDst     = Join-Path $PluginDir "Source\ThirdParty\Public\litert\c"
 $LiteRtIntHdrDst  = Join-Path $LiteRtHdrDst "internal"
+$LiteRtOptHdrDst  = Join-Path $LiteRtHdrDst "options"
 $LiteRtLmHdrDst   = Join-Path $PluginDir "Source\ThirdParty\Public\litert\lm"
 $LiteRtBuildHdrDst = Join-Path $PluginDir "Source\ThirdParty\Public\litert\build_common"
 
-foreach ($d in @($ArchDst, $LiteRtHdrDst, $LiteRtIntHdrDst, $LiteRtLmHdrDst, $LiteRtBuildHdrDst)) {
+foreach ($d in @($ArchDst, $LiteRtHdrDst, $LiteRtIntHdrDst, $LiteRtOptHdrDst, $LiteRtLmHdrDst, $LiteRtBuildHdrDst)) {
     if (-not (Test-Path $d)) {
         New-Item -ItemType Directory -Path $d -Force | Out-Null
     }
@@ -362,6 +363,21 @@ if (Test-Path $liteRtInternalSrc) {
         Copy-Item -Path $_.FullName -Destination (Join-Path $LiteRtIntHdrDst $_.Name) -Force
     }
     Write-Host "  [STAGE] litert/c/internal/*.h ($((Get-ChildItem $LiteRtIntHdrDst -Filter *.h).Count) files) -> $LiteRtIntHdrDst"
+}
+
+# --- Headers: LiteRT C API per-vendor options ---
+# Per-vendor accelerator option struct definitions: cpu, gpu, qualcomm,
+# mediatek, samsung, intel_openvino, google_tensor, runtime, compiler,
+# webnn. Their .cc is statically linked into libLiteRtLm.so on Android
+# (--dynamic_mode=off), so the symbols are available; staging the
+# headers lets consumers #include "litert/c/options/litert_<vendor>_options.h"
+# to construct typed option structs.
+$liteRtOptionsSrc = Join-Path $LiteRtSubDir "litert\c\options"
+if (Test-Path $liteRtOptionsSrc) {
+    Get-ChildItem -Path $liteRtOptionsSrc -Filter "*.h" -File | ForEach-Object {
+        Copy-Item -Path $_.FullName -Destination (Join-Path $LiteRtOptHdrDst $_.Name) -Force
+    }
+    Write-Host "  [STAGE] litert/c/options/*.h ($((Get-ChildItem $LiteRtOptHdrDst -Filter *.h).Count) files) -> $LiteRtOptHdrDst"
 }
 
 # --- Header: LiteRT-LM C API (engine.h) ---
