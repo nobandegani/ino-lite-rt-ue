@@ -270,39 +270,43 @@ that flag because upstream's `build:android` config sets
 
 ### Updating LiteRT-LM (and LiteRT along with it)
 
+The update flow is **manual** — there is no `update-litert.ps1` wrapper.
+LiteRT pins along with LiteRT-LM (its `WORKSPACE`'s `LITERT_REF` is the
+single source of truth for both the runtime and the headers), so bumping
+LiteRT-LM bumps LiteRT in the same step.
+
 ```powershell
-# Pin to a release tag:
-.\scripts\update-litert.ps1 v0.11.0
+# 1. Move the submodule HEAD to the new ref. Works for tags, SHAs, branches.
+cd Plugins\InoLiteRT\LiteRT\vendor\LiteRT-LM
+git fetch --tags origin
+git checkout v0.11.0-rc.1                  # or a SHA, or 'main'
+$sha = git rev-parse HEAD                  # 40-char commit SHA
 
-# Pin to an explicit commit SHA:
-.\scripts\update-litert.ps1 4dbbf9375f52ad9738b80c9c1a12d671a0f5ffb6
+# 2. Write the resolved SHA into LITERT_LM_TAG (in the LiteRT/ workspace).
+cd ..\..
+Set-Content LITERT_LM_TAG $sha
 
-# Pin to whatever's currently on main:
-.\scripts\update-litert.ps1 main
+# 3. Re-check the overlay's force-keep array. Re-extract the upstream
+#    LITERT_LM_C_API_EXPORT list with the awk one-liner in
+#    overlay/ino/LiteRtLm_exports.cc's MAINTENANCE comment, diff against
+#    the existing array, and add any new entries. A missing entry
+#    silently drops that symbol from the DLL — the build succeeds, but
+#    callers fail at runtime.
+
+# 4. Rebuild every platform we ship. Don't skip any — Win64 binaries
+#    from the new SHA + Android binaries from the old SHA usually
+#    crashes on launch with opaque dynamic-linker errors.
+.\scripts\build-win64.ps1
+.\scripts\build-android.ps1                # arm64-v8a (default)
+.\scripts\build-android.ps1 -Arch x86_64   # if you ship x86_64
+
+# 5. Test in UE: launch the editor / package an Android build and
+#    confirm FInoLiteRTModule's startup smoke test
+#    (litert_lm_set_min_log_level) passes.
+
+# 6. Only after all that — commit the submodule pointer + LITERT_LM_TAG
+#    (and any overlay changes) in the InoLiteRT plugin repo.
 ```
-
-The script:
-1. `git fetch --tags origin` inside the LiteRT-LM submodule
-2. `git checkout <Ref>` — works for tags, SHAs, branches
-3. Resolves to a 40-char SHA via `git rev-parse HEAD`
-4. Writes the resolved SHA into `LITERT_LM_TAG`
-5. Re-runs `build-win64.ps1`
-
-**Manual steps required after:**
-
-1. **Rebuild Android too.** `update-litert.ps1` only re-runs the Win64
-   build. For Android, run the Android script(s) separately:
-   ```powershell
-   .\scripts\build-android.ps1                    # arm64-v8a
-   .\scripts\build-android.ps1 -Arch x86_64       # if you ship x86_64
-   ```
-   Forgetting this means Win64 binaries from the new SHA + Android
-   binaries from the old SHA, which usually crashes on launch with
-   opaque dynamic-linker errors.
-
-Commit the submodule pointer + `LITERT_LM_TAG` only after all
-relevant platform builds succeed and UE actually loads the resulting
-DLLs/.so.
 
 ### Cleaning
 
