@@ -58,7 +58,7 @@ public class InoLiteRT : ModuleRules
 		// =====================================================================
 		// This is the only UE module in the plugin, so it owns the third-party
 		// wiring directly (no separate external module). Build artifacts are
-		// produced by Plugins/ino_lite_rt_ue/LiteRT/scripts/build-win64.ps1
+		// produced by Plugins/InoLiteRT/LiteRT/scripts/build-win64.ps1
 		// and staged into the consolidated tree:
 		//
 		//     Source/ThirdParty/Public/litert/c/         LiteRT C API headers
@@ -110,7 +110,7 @@ public class InoLiteRT : ModuleRules
 		else if (Target.Platform == UnrealTargetPlatform.Android)
 		{
 			// Android artifacts produced by
-			// Plugins/ino_lite_rt_ue/LiteRT/scripts/build-android.ps1
+			// Plugins/InoLiteRT/LiteRT/scripts/build-android.ps1
 			// staged under Source/ThirdParty/Android/<arch>/. We support
 			// both arm64-v8a (real devices, default) and x86_64 (emulators).
 			//

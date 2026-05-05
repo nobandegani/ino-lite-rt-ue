@@ -1,7 +1,7 @@
 # build-win64.ps1
 #
 # Build LiteRT-LM from source for Windows x64 and stage all artifacts into
-# the ino_lite_rt_ue plugin under Source/ThirdParty/{Win64,Public}.
+# the InoLiteRT plugin under Source/ThirdParty/{Win64,Public}.
 #
 # LiteRT itself is NOT built from source — we use the prebuilt libLiteRt.dll
 # Google ships inside the LiteRT-LM submodule (prebuilt/windows_x86_64/)

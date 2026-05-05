@@ -1,7 +1,7 @@
 # build-android.ps1
 #
 # Build libLiteRtLm.so from source for Android (arm64-v8a or x86_64) and
-# stage all artifacts into the ino_lite_rt_ue plugin under Source/ThirdParty/.
+# stage all artifacts into the InoLiteRT plugin under Source/ThirdParty/.
 #
 # Usage:
 #   .\build-android.ps1                    # default: arm64-v8a (real devices)
@@ -321,14 +321,15 @@ Write-Host "  [STAGE] libLiteRtLm.so (from $(Split-Path $SoSrc -Leaf)) -> $ArchD
 # Ship both so the LiteRT engine can pick whichever works on the
 # target device.
 #
-# Status of backend="gpu" on Android: UNTESTED on the current pin
-# (commit 4dbbf937, post-v0.10.2). Earlier docs claimed it was broken
-# because the prebuilt accelerator .so files had DT_NEEDED(libLiteRt.so)
-# entries that couldn't resolve — but inspection of the current
-# prebuilts shows they only need system libs (libdl, liblog, libm,
-# libc, libEGL, libGLESv3). So the original blocker is gone. Whether
-# GPU actually works end-to-end on a real device hasn't been verified;
-# treat as a smoke test target.
+# Status of backend="gpu" on Android: UNTESTED end-to-end on a real
+# device. Earlier docs claimed it was broken because the prebuilt
+# accelerator .so files had DT_NEEDED(libLiteRt.so) entries that
+# couldn't resolve — but inspection of the current prebuilts shows
+# they only need system libs (libdl, liblog, libm, libc, libEGL,
+# libGLESv3). So the original blocker is gone. Whether GPU actually
+# works on-device hasn't been verified; treat as a smoke test target.
+# To re-verify dependency cleanliness on a future pin:
+#     llvm-readelf -d libLiteRtLm.so | grep NEEDED
 $AndroidPrebuiltDir = Join-Path $LiteRtLmSubDir "prebuilt\$PrebuiltSubDir"
 $AndroidPrebuiltSoFiles = @(
     "libGemmaModelConstraintProvider.so",

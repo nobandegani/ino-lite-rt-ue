@@ -81,7 +81,7 @@ namespace
 		{
 			UE_LOG(LogInoLiteRT, Error,
 				TEXT("InoLiteRT: failed to load %s from %s. Did you run "
-					 "Plugins/ino_lite_rt_ue/LiteRT/scripts/build-win64.ps1?"),
+					 "Plugins/InoLiteRT/LiteRT/scripts/build-win64.ps1?"),
 				DllFileName, *Path);
 		}
 		return Handle;

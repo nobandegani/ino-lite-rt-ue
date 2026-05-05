@@ -40,9 +40,15 @@ foreach ($ob in $OutputBases) {
 
     Push-Location $SubmoduleDir
     try {
-        Write-Host "Running 'bazelisk --output_base=$($ob.Base) clean --expunge'..." `
+        # PowerShell argument-mode quirk: in `--output_base=$ob.Base` the
+        # parser treats `$ob` as the variable and `.Base` as literal text,
+        # which would silently expand to a bogus path. The subexpression
+        # `$($ob.Base)` forces actual member access. Same shape as the
+        # Write-Host line above.
+        $base = $ob.Base
+        Write-Host "Running 'bazelisk --output_base=$base clean --expunge'..." `
                    -ForegroundColor Yellow
-        & bazelisk --output_base=$ob.Base clean --expunge
+        & bazelisk "--output_base=$base" clean --expunge
         if ($LASTEXITCODE -ne 0) {
             throw "$($ob.Name) bazelisk clean failed (exit code $LASTEXITCODE)"
         }

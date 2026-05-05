@@ -2,10 +2,10 @@
 <TpsData xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
   <Name>LiteRT and LiteRT-LM</Name>
   <Location>
-    Plugins/ino_lite_rt_ue/Source/ThirdParty/Win64/                  (Windows x64 DLLs + import libs)
-    Plugins/ino_lite_rt_ue/Source/ThirdParty/Android/arm64-v8a/      (Android arm64-v8a .so files)
-    Plugins/ino_lite_rt_ue/Source/ThirdParty/Android/x86_64/         (Android x86_64 .so files, when built)
-    Plugins/ino_lite_rt_ue/Source/ThirdParty/Public/                 (C API headers, shared across all platforms)
+    Plugins/InoLiteRT/Source/ThirdParty/Win64/                  (Windows x64 DLLs + import libs)
+    Plugins/InoLiteRT/Source/ThirdParty/Android/arm64-v8a/      (Android arm64-v8a .so files)
+    Plugins/InoLiteRT/Source/ThirdParty/Android/x86_64/         (Android x86_64 .so files, when built)
+    Plugins/InoLiteRT/Source/ThirdParty/Public/                 (C API headers, shared across all platforms)
   </Location>
   <Function>
     On-device ML inference runtimes from Google AI Edge:

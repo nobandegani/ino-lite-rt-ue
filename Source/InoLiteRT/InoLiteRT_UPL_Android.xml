@@ -31,7 +31,7 @@ them on demand.
 Path variables:
 
   $S(AbsPluginDir)   — the directory containing this XML file:
-                       Plugins/ino_lite_rt_ue/Source/InoLiteRT/
+                       Plugins/InoLiteRT/Source/InoLiteRT/
                        (despite "Plugin" in the name — this is how
                         UE's UPL engine names it; for an XML loaded
                         from a module's Build.cs it resolves to the
@@ -40,7 +40,7 @@ Path variables:
   $S(Architecture)   — arm64-v8a or x86_64.
 
 Our .so files live at
-    Plugins/ino_lite_rt_ue/Source/ThirdParty/Android/<arch>/
+    Plugins/InoLiteRT/Source/ThirdParty/Android/<arch>/
 which is one dir up + over from $S(AbsPluginDir) = Source/InoLiteRT/.
 The <copyFile> src uses $S(Architecture) so it picks the right subdir
 automatically per build.
@@ -113,7 +113,7 @@ Docs: https://docs.unrealengine.com/en-US/Sharing/Reference/UnrealPluginLanguage
 
 	Source paths use $S(AbsPluginDir)/../ThirdParty/Android/$S(Architecture)/...
 	because $S(AbsPluginDir) resolves to the module directory
-	(Plugins/ino_lite_rt_ue/Source/InoLiteRT/), and our .so files are
+	(Plugins/InoLiteRT/Source/InoLiteRT/), and our .so files are
 	one dir up + over under Source/ThirdParty/Android/<arch>/.
 
 	$S(Architecture) is the arch UPL is currently being processed for —
