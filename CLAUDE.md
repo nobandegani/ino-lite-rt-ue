@@ -93,12 +93,14 @@ Plugins/InoLiteRT/
         ├── Public/litert/c/internal/    ← 15 LiteRT internal headers
         ├── Public/litert/c/options/     ← 11 LiteRT per-vendor option headers
         ├── Public/litert/lm/engine.h    ← LiteRT-LM C API header
-        ├── Win64/                       ← 5 DLLs + 2 import libs
+        ├── Win64/                       ← 7 DLLs + 2 import libs
         │   ├── libLiteRt.{dll,lib}
         │   ├── LiteRtLm.{dll,lib}
         │   ├── libGemmaModelConstraintProvider.dll
         │   ├── libLiteRtWebGpuAccelerator.dll
-        │   └── libLiteRtTopKWebGpuSampler.dll
+        │   ├── libLiteRtTopKWebGpuSampler.dll
+        │   ├── dxcompiler.dll           (DXC, copied from UE ShaderConductor)
+        │   └── dxil.dll                 (DXIL signing, copied from UE ShaderConductor)
         └── Android/<arch>/              ← 7 .so files per arch (no separate libLiteRt.so)
             ├── libLiteRtLm.so           (Bazel-built ~52 MB monolithic)
             ├── libGemmaModelConstraintProvider.so
@@ -142,7 +144,7 @@ The first and currently only consumer is `Plugins/InoAgents/`.
 
 | Platform              | LiteRT-LM    | LiteRT                | Notes |
 |---|---|---|---|
-| **Windows x64**       | ✅ shipping   | ✅ shipping            | CPU + GPU via D3D12/WebGPU. 5 DLLs total. |
+| **Windows x64**       | ✅ shipping   | ✅ shipping            | CPU + GPU via D3D12/WebGPU. 7 DLLs total (5 LiteRT-LM + dxcompiler.dll + dxil.dll for the Dawn shader compile path). |
 | **Android arm64-v8a** | ✅ shipping   | ✅ statically linked   | CPU + GPU via WebGPU/OpenCL. 7 .so files. Monolithic libLiteRtLm.so. |
 | **Android x86_64**    | ✅ shipping   | ✅ statically linked   | Same shape as arm64-v8a. For emulators / x86 Chromebooks. |
 | iOS / Linux / macOS   | ⏳ stubs only | ⏳ stubs only          | No library built. Consumer InoAgents has stub C API impls in `InoLiteRtLmStubs_NonWindows.cpp`. |
@@ -155,6 +157,16 @@ hand-written paths) — InoLiteRT does not expose those via its UE-side
 enum. NPU support exists in the upstream source for Android Qualcomm
 Hexagon but is untested on this pin. There is no DirectML, Vulkan, or
 Windows-NPU path.
+
+The Windows GPU path (Dawn → D3D12) compiles WGSL → HLSL → DXIL at
+runtime, so it requires `dxcompiler.dll` + `dxil.dll` in the process.
+We stage UE's bundled copy from `Engine/Binaries/ThirdParty/ShaderConductor/Win64/`
+into `Source/ThirdParty/Win64/` (build-win64.ps1's last staging step)
+and pre-load by full path in `FInoLiteRTModule::StartupModule` so the
+WebGPU prebuilt's filename-only `LoadLibraryA` resolves correctly in
+packaged builds. Editor PIE incidentally satisfies this via UE's
+CEF3/ShaderConductor preload; without our staging, packaged GPU
+`engine_create` returned NULL with no useful error log.
 
 GPU on Android is **untested** on the current pin; CPU works. Earlier
 docs claimed GPU was broken because the prebuilt accelerator `.so` files

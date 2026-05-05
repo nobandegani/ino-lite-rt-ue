@@ -72,6 +72,17 @@ public class InoLiteRT : ModuleRules
 		//     Source/ThirdParty/Win64/libGemmaModelConstraintProvider.dll
 		//     Source/ThirdParty/Win64/libLiteRtWebGpuAccelerator.dll
 		//     Source/ThirdParty/Win64/libLiteRtTopKWebGpuSampler.dll
+		//     Source/ThirdParty/Win64/dxcompiler.dll     DirectX Shader Compiler
+		//     Source/ThirdParty/Win64/dxil.dll           DXIL signing helper
+		//
+		// dxcompiler.dll + dxil.dll are required at runtime by the two
+		// WebGPU accelerator DLLs above when LiteRT-LM is started with
+		// backend=gpu — Dawn calls LoadLibraryA("dxcompiler.dll") /
+		// ("dxil.dll") to translate WGSL → HLSL → DXIL during D3D12
+		// device init. Editor PIE happens to find them via UE's CEF3 /
+		// ShaderConductor preload; packaged builds need them explicitly
+		// staged. They're inert until LiteRT GPU is actually used, so
+		// shipping them is free for CPU-only consumers.
 		//
 		// Companion files in this same directory:
 		//     InoLiteRT.tps                  third-party software notification
@@ -106,6 +117,13 @@ public class InoLiteRT : ModuleRules
 			RuntimeDependencies.Add(Path.Combine(Win64Dir, "libGemmaModelConstraintProvider.dll"));
 			RuntimeDependencies.Add(Path.Combine(Win64Dir, "libLiteRtWebGpuAccelerator.dll"));
 			RuntimeDependencies.Add(Path.Combine(Win64Dir, "libLiteRtTopKWebGpuSampler.dll"));
+
+			// DXC — not link-imported (no PublicDelayLoadDLLs entry); pulled
+			// in at runtime by Dawn via LoadLibraryA. Stage so packaged
+			// builds have it on disk; pre-load by full path in StartupModule
+			// so the filename lookup resolves to our copy.
+			RuntimeDependencies.Add(Path.Combine(Win64Dir, "dxcompiler.dll"));
+			RuntimeDependencies.Add(Path.Combine(Win64Dir, "dxil.dll"));
 		}
 		else if (Target.Platform == UnrealTargetPlatform.Android)
 		{

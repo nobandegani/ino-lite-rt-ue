@@ -18,6 +18,13 @@
       LLM runtime layered on top of LiteRT. Used for Gemma 4 inference,
       tool-calling, and streaming generation via the litert_lm_* C API.
 
+    On Windows we additionally ship dxcompiler.dll and dxil.dll
+    (Microsoft's DirectX Shader Compiler — https://github.com/microsoft/DirectXShaderCompiler,
+    MIT license; copy taken from UE's bundled Engine/Binaries/ThirdParty/ShaderConductor/Win64/).
+    Required at runtime by the Dawn-based WebGPU GPU accelerator to
+    compile WGSL shaders to DXIL for D3D12. Inert when LiteRT runs on
+    CPU.
+
     Ships as DLLs (Windows x64) and .so files (Android arm64-v8a and
     x86_64) alongside the plugin, exposed to UE consumers via the
     InoLiteRT module.

@@ -94,16 +94,35 @@ void FInoLiteRTModule::StartupModule()
 	// Load order is critical — each DLL must be in memory before any
 	// DLL that imports from it:
 	//
-	//   1. libGemmaModelConstraintProvider.dll  (standalone, no deps)
-	//   2. libLiteRt.dll                        (LiteRT core)
-	//   3. LiteRtLm.dll                         (imports from libLiteRt.dll)
-	//   4. libLiteRtWebGpuAccelerator.dll       (imports from libLiteRt.dll)
-	//   5. libLiteRtTopKWebGpuSampler.dll       (imports from libLiteRt.dll)
+	//   1. dxcompiler.dll                       (DXC, Dawn dep — see below)
+	//   2. dxil.dll                             (DXIL signing helper, Dawn dep)
+	//   3. libGemmaModelConstraintProvider.dll  (standalone, no deps)
+	//   4. libLiteRt.dll                        (LiteRT core)
+	//   5. LiteRtLm.dll                         (imports from libLiteRt.dll)
+	//   6. libLiteRtWebGpuAccelerator.dll       (imports from libLiteRt.dll)
+	//   7. libLiteRtTopKWebGpuSampler.dll       (imports from libLiteRt.dll)
 	//
 	// With --define=litert_link_capi_so=true, LiteRtLm.dll dynamically
 	// links against libLiteRt.dll (instead of statically including it),
 	// so libLiteRt.dll MUST be loaded before LiteRtLm.dll or Windows
 	// will fail with "Missing import: libLiteRt.dll" (GetLastError=126).
+	//
+	// dxcompiler/dxil go first because the WebGPU accelerator DLLs
+	// loaded later in this sequence call LoadLibraryA("dxcompiler.dll")
+	// / ("dxil.dll") internally during D3D12 device init (Dawn compiles
+	// WGSL → HLSL → DXIL at runtime). Once a DLL is in the process's
+	// loaded-modules table, filename-only LoadLibraryA returns that
+	// handle directly without doing a search, so pre-loading our staged
+	// copies by full path here guarantees the WebGPU prebuilt finds
+	// them in packaged builds. The editor incidentally satisfies this
+	// via UE's CEF3 / ShaderConductor preload; packages don't.
+	//
+	// Failure to load DXC is non-fatal — CPU backend doesn't need it,
+	// and a user with a system-installed dxcompiler.dll on PATH may
+	// also be fine. We log and continue.
+	DxCompilerHandle = LoadStagedDll(TEXT("dxcompiler.dll"));
+	DxilHandle       = LoadStagedDll(TEXT("dxil.dll"));
+
 	GemmaConstraintProviderHandle = LoadStagedDll(TEXT("libGemmaModelConstraintProvider.dll"));
 	LiteRtHandle                  = LoadStagedDll(TEXT("libLiteRt.dll"));
 	LiteRtLmHandle                = LoadStagedDll(TEXT("LiteRtLm.dll"));
@@ -156,7 +175,8 @@ void FInoLiteRTModule::ShutdownModule()
 {
 #if PLATFORM_WINDOWS
 	// Unload in reverse dependency order: GPU DLLs first (they import
-	// from libLiteRt), then LiteRtLm, then libLiteRt, then constraint provider.
+	// from libLiteRt + use DXC), then LiteRtLm, then libLiteRt, then
+	// constraint provider, then DXC last.
 	if (TopKWebGpuSamplerHandle)
 	{
 		FPlatformProcess::FreeDllHandle(TopKWebGpuSamplerHandle);
@@ -181,6 +201,16 @@ void FInoLiteRTModule::ShutdownModule()
 	{
 		FPlatformProcess::FreeDllHandle(GemmaConstraintProviderHandle);
 		GemmaConstraintProviderHandle = nullptr;
+	}
+	if (DxilHandle)
+	{
+		FPlatformProcess::FreeDllHandle(DxilHandle);
+		DxilHandle = nullptr;
+	}
+	if (DxCompilerHandle)
+	{
+		FPlatformProcess::FreeDllHandle(DxCompilerHandle);
+		DxCompilerHandle = nullptr;
 	}
 #endif  // PLATFORM_WINDOWS
 

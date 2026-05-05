@@ -253,6 +253,46 @@ foreach ($dll in $AcceleratorDlls) {
     }
 }
 
+# DirectX Shader Compiler (DXC) — required by the Dawn-based WebGPU
+# accelerators above. They internally call LoadLibraryA("dxcompiler.dll")
+# and ("dxil.dll") during D3D12 device init to translate WGSL → HLSL →
+# DXIL. The editor process incidentally has these loaded (UE bundles
+# them under Engine/Binaries/ThirdParty/ShaderConductor/), so PIE works
+# without us doing anything; packaged builds have no such ride-along,
+# so DXC must be explicitly staged into the plugin tree and pre-loaded
+# at module startup. See InoLiteRT.cpp's StartupModule.
+#
+# Source: UE engine's ShaderConductor copy. Same DLL Microsoft ships
+# under MIT (https://github.com/microsoft/DirectXShaderCompiler) — we
+# just reuse the engine's already-tested-with-D3D12 copy instead of
+# pinning our own DirectXShaderCompiler release.
+#
+# Engine root resolution: $env:UE_ROOT first, then a couple of common
+# install paths. Override with `$env:UE_ROOT = "..."` in the calling
+# shell if neither matches.
+$UeRoot = $env:UE_ROOT
+if (-not $UeRoot -or -not (Test-Path $UeRoot)) {
+    $UeCandidates = @(
+        "C:\Inoland\Epic Games\UE_5.7",
+        "C:\Program Files\Epic Games\UE_5.7"
+    )
+    foreach ($c in $UeCandidates) {
+        if (Test-Path $c) { $UeRoot = $c; break }
+    }
+}
+if (-not $UeRoot) {
+    throw "UE engine root not found. Set `$env:UE_ROOT to your UE 5.7 install dir before re-running."
+}
+$DxcSrcDir = Join-Path $UeRoot "Engine\Binaries\ThirdParty\ShaderConductor\Win64"
+foreach ($dll in @("dxcompiler.dll", "dxil.dll")) {
+    $src = Join-Path $DxcSrcDir $dll
+    if (-not (Test-Path $src)) {
+        throw "DXC required by WebGPU GPU backend not found at $src. Engine install may be incomplete."
+    }
+    Copy-Item -Path $src -Destination (Join-Path $Win64Dst $dll) -Force
+    Write-Host "  [STAGE] $dll (from UE ShaderConductor) -> $Win64Dst"
+}
+
 # --- Headers: LiteRT C API ---
 Get-ChildItem -Path (Join-Path $LiteRtSubDir "litert\c") -Filter "*.h" -File | ForEach-Object {
     Copy-Item -Path $_.FullName -Destination (Join-Path $LiteRtHdrDst $_.Name) -Force
