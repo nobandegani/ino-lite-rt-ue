@@ -10,3 +10,6 @@
 [submodule "Convert/NeuTTS/vendor/neutts"]
 	path = Convert/NeuTTS/vendor/neutts
 	url = https://github.com/neuphonic/neutts.git
+[submodule "Convert/NeuCodec/vendor/neucodec"]
+	path = Convert/NeuCodec/vendor/neucodec
+	url = https://github.com/neuphonic/neucodec.git
