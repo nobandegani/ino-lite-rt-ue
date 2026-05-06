@@ -136,11 +136,17 @@ def main(_):
   mean_abs_diff = float(np.mean(np.abs(diff)))
   mse = float(np.mean(diff**2))
 
+  # OnnxISTFTHead trims n_fft/2 samples from each end (lines 107-108 of
+  # vendor/neucodec/onnx/onnx_ops.py), so the actual output length is
+  # (F-1) * hop_length, NOT F * hop_length. For F=50, that's 23520
+  # samples = 0.98 s at 24 kHz (close to 1 s; one frame's worth gets
+  # trimmed at the edges).
+  expected_samples = (_NUM_FRAMES.value - 1) * 480
   print("\n" + "=" * 70)
   print("SANITY SUMMARY")
   print("=" * 70)
   print(f"Output shape:             {tflite_audio.shape} (expected"
-        f" [1, 1, {_NUM_FRAMES.value * 480}])")
+        f" [1, 1, {expected_samples}])")
   print(f"Max abs sample diff:      {max_abs_diff:.6f}")
   print(f"Mean abs sample diff:     {mean_abs_diff:.6f}")
   print(f"MSE:                      {mse:.6e}")

@@ -37,7 +37,7 @@ codes [B, 1, F] int64 (FSQ indices, 0..65535 — 4^8 levels)
    ↓ LayerNorm
    ↓ Linear (1024 -> n_fft+2 = 1922)  -- splits into magnitude & phase
    ↓ ISTFTHead (window-summed inverse STFT)
-   ↓ audio [B, 1, F * 480] float32 at 24 kHz
+   ↓ audio [B, 1, (F-1) * 480] float32 at 24 kHz
 ```
 
 Two of the original ops don't lift cleanly to TFLite, and upstream
@@ -111,7 +111,7 @@ Same idea as the multi-prefill signature trick we used for NeuTTS Nano.
 | Input dtype | `int64` (FSQ indices) |
 | Input range | `[0, 65535]` (4^8 FSQ levels) |
 | Output name | (single output) |
-| Output shape | `[1, 1, F * 480]` |
+| Output shape | `[1, 1, (F - 1) * 480]` (OnnxISTFTHead trims n_fft/2 samples on each edge) |
 | Output dtype | `float32` |
 | Output sample rate | **24 kHz** |
 
