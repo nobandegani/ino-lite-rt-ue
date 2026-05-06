@@ -26,6 +26,13 @@ torchtune>=0.3.1
 # einops.rearrange used inside bs_roformer5 attention.
 einops
 
+# Imported transitively at module load time:
+# `neucodec/__init__.py` -> `model.py` -> `codec_encoder_distill.py` ->
+# `from local_attention.transformer import DynamicPositionBias, ...`.
+# Even though we don't run the encoder, the import chain fires when
+# `from neucodec import NeuCodec`, so this has to resolve.
+local_attention>=1.11.1
+
 # torchaudio is already pulled in by litert-torch's requirements.txt
 # (torchaudio==2.11.0). NeuCodec.__init__ imports it transitively.
 # Listed here for documentation, but pip will skip if already at the
