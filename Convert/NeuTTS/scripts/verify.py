@@ -63,7 +63,18 @@ def main(_):
       mask_cache_size=verifier.DEFAULT_KV_CACHE_MAX_LEN,
   )
 
-  print("Verifying logits + greedy generations ...")
+  # We pass `verify_prompts=False` to skip the greedy-generation comparison
+  # step, which is broken on `transformers>=5.0` (litert-torch's
+  # `transformers_verifier.TransformersModelWrapper.generate` passes
+  # `use_model_defaults=False` to `model.generate(...)`, but that kwarg was
+  # removed in transformers 5.x and now triggers
+  # `ValueError: The following model_kwargs are not used by the model:
+  # ['use_model_defaults']`). The logits-level check (`verify_inputs=True`
+  # by default) is unaffected and is the stronger proof of correctness —
+  # if logits match at every position to atol=1e-4, greedy decoding will
+  # too. Re-enable `verify_prompts=True` if you downgrade to
+  # `transformers<5` or upstream litert-torch fixes the verifier.
+  print("Verifying logits (skipping prompts step — see verify.py comment) ...")
   verifier.verify_reauthored_model(
       original_model=transformers_verifier.TransformersModelWrapper(
           original_model
@@ -73,6 +84,7 @@ def main(_):
       generate_prompts=_PROMPTS.value,
       max_new_tokens=_MAX_NEW_TOKENS.value,
       atol=_ATOL.value,
+      verify_prompts=False,
   )
 
 

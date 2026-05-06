@@ -1,26 +1,48 @@
 # Conversion environment for NeuTTS Nano -> LiteRT.
 #
-# litert-torch lives in this repo as a submodule under
-# Plugins/InoLiteRT/LiteRT/vendor/litert-torch. Install it editable so we get
-# the generative API (model_builder, converter, verifier) and let pip resolve
-# its full transitive dep set: torch, torchao, ai-edge-litert,
-# ai-edge-quantizer, litert-converter, jax, scipy, numpy, safetensors,
-# kagglehub, transformers, multipledispatch, jaxtyping, fire, rich, absl-py.
+# Two-step install. We CANNOT just `pip install -e ../../LiteRT/vendor/litert-torch`
+# because litert-torch's setup.py pins `litert-converter==0.1.*`, and that
+# package does NOT exist on PyPI under any release matching `0.1.*` (only
+# `0.0.0.devXXX`-style pre-releases exist). pip returns "from versions: none"
+# even with --pre.
 #
-# IMPORTANT: --pre is required. litert-torch's setup.py pins
-# `litert-converter==0.1.*`, but `litert-converter` only ships to PyPI as
-# `.dev` pre-releases (no stable releases exist). Without --pre, pip returns
-# "Could not find a version that satisfies the requirement litert-converter".
-# Upstream's own requirements.txt has --pre baked in for the same reason.
+# Upstream's own requirements.txt works around this with the looser
+# `litert-converter>=0.0.0.dev0` and uses `*-nightly` ai-edge packages.
+# We piggy-back on it for the dep set, then install litert-torch itself
+# with --no-deps so its broken setup.py pins don't re-resolve.
 #
-# Run from Plugins/InoLiteRT/Convert/NeuTTS/ (path relative to that CWD):
-#     python -m venv .venv
-#     .\.venv\Scripts\Activate.ps1     (Windows)  / source .venv/bin/activate
-#     pip install -r scripts/requirements.txt
+# Run from Plugins/InoLiteRT/Convert/NeuTTS/ (path resolution depends on CWD):
+#
+#   STEP 1 (this file — pulls torch, ai-edge-litert-nightly,
+#           ai-edge-quantizer-nightly, litert-converter, jax, transformers,
+#           safetensors, etc.):
+#       pip install -r scripts/requirements.txt
+#
+#   STEP 2 (separate command — `--no-deps` is a global pip flag, not a
+#           per-line requirements.txt option, so it can't go in this file):
+#       pip install --no-deps -e ../../LiteRT/vendor/litert-torch
+#
+# After step 2, `import litert_torch.generative.utilities.converter` works.
 
+# --pre is required for `litert-converter` (only published as `.dev` builds)
+# AND `ai-edge-litert-nightly` / `ai-edge-quantizer-nightly`. Upstream's own
+# requirements.txt has --pre on line 6, but in some pip versions the flag
+# from an included file does not propagate to resolution of subsequent
+# packages within that include. Putting --pre here guarantees it's active
+# from the very first line.
 --pre
--e ../../LiteRT/vendor/litert-torch
 
-# huggingface_hub is only needed if you re-download the checkpoint from HF;
-# the existing models/nano/ folder already contains the weights we use.
+# Pull upstream's full proven-working dep set. Path is relative to THIS file
+# (Convert/NeuTTS/scripts/) -> three levels up to reach Plugins/InoLiteRT/.
+-r ../../../LiteRT/vendor/litert-torch/requirements.txt
+
+# tf-nightly is required at runtime by litert-torch's converter:
+# `litert_torch/generative/layers/lora.py` imports
+# `tensorflow.lite.python.schema_py_generated`. Upstream lists tf-nightly
+# in dev-requirements.txt (not requirements.txt), but for our purposes it's
+# a runtime dep. Without it, `from litert_torch.generative.utilities import
+# converter` raises ModuleNotFoundError: No module named 'tensorflow'.
+tf-nightly
+
+# NeuTTS-side extras. transformers/safetensors/torch already pulled above.
 huggingface_hub>=0.20

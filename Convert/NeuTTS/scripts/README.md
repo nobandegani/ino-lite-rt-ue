@@ -25,18 +25,73 @@ Convert/NeuTTS/
 
 ## One-time environment setup
 
-Python ≥ 3.10. From `Plugins/InoLiteRT/Convert/NeuTTS/`:
+> **Linux only.** litert-torch's `litert-converter` dependency only ships
+> Linux wheels — Windows envs fail with `No matching distribution found for
+> litert-converter` because no version matches the platform. Upstream's own
+> README (`README.md` line 74) and CI matrix confirm Linux is the only
+> supported OS. On Windows, run the conversion **in WSL** (see below). The
+> output `.tflite` is platform-agnostic and works fine in your Windows
+> LiteRT-LM build.
+>
+> Use **Python 3.10 or 3.11**, not 3.12+. The `litert-converter` `.dev`
+> wheels declare `Requires-Python >=3.9,<3.12` so 3.12+ are filtered out.
+
+### On Linux (or WSL on Windows)
+
+If you're on Windows, first install WSL once:
 
 ```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r scripts\requirements.txt
+# Windows PowerShell, run as administrator. Reboots after.
+wsl --install
 ```
 
-The bulk of the dependency tree (torch 2.11, ai-edge-litert-nightly,
-ai-edge-quantizer-nightly, jax, transformers, safetensors) is pulled in
-transitively via the editable install of `litert-torch` in
-`requirements.txt`.
+Then launch Ubuntu from Start menu, set a username/password on first run,
+and:
+
+```bash
+sudo apt update
+sudo apt install -y python3.11 python3.11-venv python3-pip
+```
+
+Your Windows drives appear under `/mnt/<letter>/`. Move into the project
+and set up the env:
+
+```bash
+cd /mnt/e/Projects/InoProject/Plugins/InoLiteRT/Convert/NeuTTS
+
+python3.11 -m venv .venv
+source .venv/bin/activate
+
+# Step 1: pull all transitive deps (torch, ai-edge-litert-nightly,
+# ai-edge-quantizer-nightly, litert-converter, jax, transformers, etc.)
+# via upstream litert-torch's own requirements.txt.
+pip install -r scripts/requirements.txt
+
+# Step 2: install litert-torch itself, skipping its setup.py dep
+# resolution (its `litert-converter==0.1.*` pin is broken — that version
+# doesn't exist on PyPI even on Linux). The deps from step 1 already
+# cover everything it needs.
+pip install --no-deps -e ../../LiteRT/vendor/litert-torch
+
+# Smoke test — prints `ok` if the install is good.
+python -c "from litert_torch.generative.utilities import converter; print('ok')"
+```
+
+> **Why two steps?** litert-torch's `setup.py` pins `litert-converter==0.1.*`,
+> but `litert-converter` only ships to PyPI as `0.0.0.devXXX` pre-releases
+> (Linux-only) — no `0.1.*` release exists. Upstream's own `requirements.txt`
+> works around this with the looser `litert-converter>=0.0.0.dev0`. We use
+> their `requirements.txt` for the dep set, then install litert-torch
+> itself with `--no-deps` to bypass the broken pin.
+
+If you prefer **conda** to `venv`:
+
+```bash
+conda create -n inolitert python=3.11 -y
+conda activate inolitert
+pip install -r scripts/requirements.txt
+pip install --no-deps -e ../../LiteRT/vendor/litert-torch
+```
 
 ## 1. Verify the re-authoring (do this BEFORE conversion)
 
@@ -58,15 +113,21 @@ binding wholesale).
 
 ## 2. Convert to `.tflite`
 
-```powershell
-python -m scripts.convert_to_tflite `
-  --checkpoint_path=models\nano `
-  --output_path=output `
-  --output_name_prefix=neutts_nano `
-  --kv_cache_max_len=2048 `
-  --prefill_seq_lens=128,512,1024 `
+```bash
+python -m scripts.convert_to_tflite \
+  --checkpoint_path=models/nano \
+  --output_path=output \
+  --output_name_prefix=neutts_nano \
+  --kv_cache_max_len=2048 \
+  --prefill_seq_lens=128 \
+  --prefill_seq_lens=512 \
+  --prefill_seq_lens=1024 \
   --quantize=dynamic_int8
 ```
+
+> **Note**: `--prefill_seq_lens` is an absl `multi_int` flag, so it must
+> be passed once per value, not as `--prefill_seq_lens=128,512,1024`
+> (which fails with `invalid literal for int(): '128,512,1024'`).
 
 Output file: `output/neutts_nano_q8_ekv2048.tflite` (~80 MB at int8 quant
 for a 229M-emb+active model with tied embeddings).
