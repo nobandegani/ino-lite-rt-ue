@@ -1,0 +1,40 @@
+# NeuCodec decoder conversion — extra deps on top of the
+# inolitert-conv env that's already set up for NeuTTS Nano (which has
+# torch, transformers, safetensors, ai-edge-litert-nightly, litert-torch
+# editable, tf-nightly, etc.).
+#
+# Install from the same env (Convert/NeuTTS/scripts/requirements.txt
+# already covers the heavy deps):
+#
+#     conda activate inolitert-conv
+#     cd Plugins/InoLiteRT/Convert/NeuCodec
+#     pip install -r scripts/requirements.txt
+#
+# Per vendor/neucodec/pyproject.toml, NeuCodec needs these at runtime
+# (the encoder pulls more — torchaudio, transformers, local_attention —
+# but those are already in the env or not on the decoder forward path).
+
+# FSQ quantizer class. Needed at MODEL LOAD time (NeuCodec.__init__
+# constructs `ResidualFSQ` from this package). We swap it out with
+# OnnxResidualFSQ before tracing, but the import has to succeed first.
+vector-quantize-pytorch==1.17.8
+
+# RotaryPositionalEmbeddings used by bs_roformer5.TransformerBlock
+# inside the decoder backbone.
+torchtune>=0.3.1
+
+# einops.rearrange used inside bs_roformer5 attention.
+einops
+
+# torchaudio is already pulled in by litert-torch's requirements.txt
+# (torchaudio==2.11.0). NeuCodec.__init__ imports it transitively.
+# Listed here for documentation, but pip will skip if already at the
+# correct version.
+torchaudio
+
+# librosa for the upstream ONNX export script's example audio loading
+# (`librosa.ex("libri1")` in vendor/neucodec/onnx/export_onnx.py).
+# We don't need it for our scripts/convert_to_tflite.py (we use
+# torch.zeros for sample inputs), but keep it so vendor's export_onnx.py
+# remains runnable as a reference.
+librosa
