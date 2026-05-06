@@ -5,7 +5,7 @@
       <sourceFolder url="file://$MODULE_DIR$/LiteRT/vendor/LiteRT-LM/bazel-litert-lm/external/bazel_tools/third_party/py/abseil" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/LiteRT/vendor/litert-torch" isTestSource="false" />
     </content>
-    <orderEntry type="jdk" jdkName="inolitert" jdkType="Python SDK" />
+    <orderEntry type="jdk" jdkName="inolitert311" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
   </component>
   <component name="PyDocumentationSettings">
