@@ -6,3 +6,4 @@ Intermediate/
 # build-win64.ps1 redownloads on demand; checking the zip in would just
 # bloat the repo.
 LiteRT/.cache/
+Convert/NeuTTS/models/*
