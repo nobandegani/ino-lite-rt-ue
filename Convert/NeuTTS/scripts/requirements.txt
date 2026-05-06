@@ -1,0 +1,26 @@
+# Conversion environment for NeuTTS Nano -> LiteRT.
+#
+# litert-torch lives in this repo as a submodule under
+# Plugins/InoLiteRT/LiteRT/vendor/litert-torch. Install it editable so we get
+# the generative API (model_builder, converter, verifier) and let pip resolve
+# its full transitive dep set: torch, torchao, ai-edge-litert,
+# ai-edge-quantizer, litert-converter, jax, scipy, numpy, safetensors,
+# kagglehub, transformers, multipledispatch, jaxtyping, fire, rich, absl-py.
+#
+# IMPORTANT: --pre is required. litert-torch's setup.py pins
+# `litert-converter==0.1.*`, but `litert-converter` only ships to PyPI as
+# `.dev` pre-releases (no stable releases exist). Without --pre, pip returns
+# "Could not find a version that satisfies the requirement litert-converter".
+# Upstream's own requirements.txt has --pre baked in for the same reason.
+#
+# Run from Plugins/InoLiteRT/Convert/NeuTTS/ (path relative to that CWD):
+#     python -m venv .venv
+#     .\.venv\Scripts\Activate.ps1     (Windows)  / source .venv/bin/activate
+#     pip install -r scripts/requirements.txt
+
+--pre
+-e ../../LiteRT/vendor/litert-torch
+
+# huggingface_hub is only needed if you re-download the checkpoint from HF;
+# the existing models/nano/ folder already contains the weights we use.
+huggingface_hub>=0.20

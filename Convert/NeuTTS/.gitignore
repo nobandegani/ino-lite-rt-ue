@@ -1,0 +1,11 @@
+# Model weights — re-download from huggingface.co/neuphonic/neutts-nano
+models/
+
+# Conversion outputs — re-derivable from `python -m scripts.convert_to_tflite`
+output/*
+!output/.gitkeep
+
+# Python venv + caches
+.venv/
+__pycache__/
+*.pyc
