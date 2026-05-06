@@ -7,3 +7,6 @@
 [submodule "LiteRT/vendor/litert-torch"]
 	path = LiteRT/vendor/litert-torch
 	url = https://github.com/google-ai-edge/litert-torch.git
+[submodule "Convert/NeuTTS/vendor/neutts"]
+	path = Convert/NeuTTS/vendor/neutts
+	url = https://github.com/neuphonic/neutts.git
