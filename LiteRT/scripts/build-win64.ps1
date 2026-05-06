@@ -262,35 +262,99 @@ foreach ($dll in $AcceleratorDlls) {
 # so DXC must be explicitly staged into the plugin tree and pre-loaded
 # at module startup. See InoLiteRT.cpp's StartupModule.
 #
-# Source: UE engine's ShaderConductor copy. Same DLL Microsoft ships
-# under MIT (https://github.com/microsoft/DirectXShaderCompiler) — we
-# just reuse the engine's already-tested-with-D3D12 copy instead of
-# pinning our own DirectXShaderCompiler release.
+# Source: Microsoft's official DirectXShaderCompiler GitHub release at
+# the EXACT version upstream LiteRT-LM pins for its Bazel build —
+# vendor/LiteRT-LM/WORKSPACE has:
 #
-# Engine root resolution: $env:UE_ROOT first, then a couple of common
-# install paths. Override with `$env:UE_ROOT = "..."` in the calling
-# shell if neither matches.
-$UeRoot = $env:UE_ROOT
-if (-not $UeRoot -or -not (Test-Path $UeRoot)) {
-    $UeCandidates = @(
-        "C:\Inoland\Epic Games\UE_5.7",
-        "C:\Program Files\Epic Games\UE_5.7"
-    )
-    foreach ($c in $UeCandidates) {
-        if (Test-Path $c) { $UeRoot = $c; break }
-    }
+#     http_archive(
+#         name = "directx_shader_compiler",
+#         url = "https://github.com/microsoft/DirectXShaderCompiler/
+#                releases/download/v1.9.2602/dxc_2026_02_20.zip",
+#         sha256 = "a1e89031...4151e",
+#     )
+#
+# Why NOT reuse UE's bundled ShaderConductor DXC (the previous behavior):
+#   UE 5.7's ShaderConductor copy reports FileVersion 3.7.0 and is an
+#   Epic Games-signed Microsoft fork; upstream LiteRT-LM's WebGPU
+#   accelerator was built and tested against MS official DXC v1.9.2602
+#   (Feb 2026). Empirically, shipping UE's DXC produced correct GPU
+#   output in editor PIE (where UE's RHI/ShaderConductor pre-loads the
+#   engine copy first) but **runaway non-terminating output in packaged
+#   Shipping builds** (where our staged copy is the only one in the
+#   process). Aligning with upstream's pinned DXC makes the binary
+#   surface match the WebGPU accelerator's tested configuration in
+#   both editor and package, removing the editor/package divergence.
+#
+# Why download instead of consuming the Bazel-fetched copy:
+#   `bazelisk fetch @directx_shader_compiler//...` doesn't populate the
+#   external repo because nothing under //ino:LiteRtLm transitively
+#   depends on it (the WebGPU accelerator is consumed as a prebuilt,
+#   not built from source). Downloading the pinned zip directly here
+#   keeps the staging step self-contained and gives us SHA256
+#   verification independent of Bazel state.
+#
+# Idempotent: cached zip in $CacheDir is reused on subsequent runs
+# (matching the InoOnnx setup-onnxruntime.ps1 download pattern). To
+# force a re-download, delete $CacheDir/dxc-v1.9.2602.zip.
+$DxcVersion        = "v1.9.2602"        # mirrors WORKSPACE's url tag
+$DxcDateStamp      = "2026_02_20"       # mirrors WORKSPACE's url filename
+$DxcSha256Expected = "a1e89031421cf3c1fca6627766ab3020ca4f962ac7e2caa7fab2b33a8436151e"
+$DxcUrl            = "https://github.com/microsoft/DirectXShaderCompiler/releases/download/$DxcVersion/dxc_$DxcDateStamp.zip"
+
+$CacheDir   = Join-Path $WorkspaceDir ".cache"
+$DxcZipPath = Join-Path $CacheDir "dxc-$DxcVersion.zip"
+$DxcExtractDir = Join-Path $CacheDir "dxc-$DxcVersion-extract"
+
+if (-not (Test-Path $CacheDir)) {
+    New-Item -ItemType Directory -Path $CacheDir -Force | Out-Null
 }
-if (-not $UeRoot) {
-    throw "UE engine root not found. Set `$env:UE_ROOT to your UE 5.7 install dir before re-running."
+
+# Download (or reuse cached) zip
+if (Test-Path $DxcZipPath) {
+    Write-Host "  [CACHED] DXC $DxcVersion zip ($([math]::Round((Get-Item $DxcZipPath).Length / 1MB, 1)) MB)"
+} else {
+    Write-Host "  [DOWNLOAD] DXC $DxcVersion (Microsoft official release pinned by LiteRT-LM WORKSPACE)"
+    Write-Host "             $DxcUrl"
+    Invoke-WebRequest -Uri $DxcUrl -OutFile $DxcZipPath -UseBasicParsing
+    Write-Host "             -> $DxcZipPath ($([math]::Round((Get-Item $DxcZipPath).Length / 1MB, 1)) MB)"
 }
-$DxcSrcDir = Join-Path $UeRoot "Engine\Binaries\ThirdParty\ShaderConductor\Win64"
+
+# Verify SHA256 against WORKSPACE pin — same value Bazel checks against
+# when http_archive resolves @directx_shader_compiler. Mismatch means
+# the download was corrupted, MITM'd, or the upstream tag was retagged.
+$DxcSha256Actual = (Get-FileHash -Algorithm SHA256 -Path $DxcZipPath).Hash.ToLower()
+if ($DxcSha256Actual -ne $DxcSha256Expected) {
+    Remove-Item -Path $DxcZipPath -Force
+    throw ("DXC zip SHA256 mismatch:`n" +
+           "  expected (WORKSPACE pin): $DxcSha256Expected`n" +
+           "  actual:                   $DxcSha256Actual`n" +
+           "Cached file deleted. Re-run to retry the download.")
+}
+Write-Host "  [VERIFY] DXC zip SHA256 matches WORKSPACE pin"
+
+# Extract (always — cheap, ensures consistent layout, lets re-runs after
+# accidental tree edits self-heal)
+if (Test-Path $DxcExtractDir) {
+    Remove-Item -Recurse -Force $DxcExtractDir
+}
+New-Item -ItemType Directory -Path $DxcExtractDir -Force | Out-Null
+Expand-Archive -Path $DxcZipPath -DestinationPath $DxcExtractDir -Force
+
+# Microsoft's release zip layout:
+#   bin/x64/dxcompiler.dll
+#   bin/x64/dxil.dll
+#   bin/x86/...   (32-bit, ignored)
+#   bin/arm64/... (Windows-ARM64, ignored)
+#   inc/*.h
+#   lib/x64/...
+$DxcSrcDir = Join-Path $DxcExtractDir "bin\x64"
 foreach ($dll in @("dxcompiler.dll", "dxil.dll")) {
     $src = Join-Path $DxcSrcDir $dll
     if (-not (Test-Path $src)) {
-        throw "DXC required by WebGPU GPU backend not found at $src. Engine install may be incomplete."
+        throw "DXC bin/x64/$dll not found in extracted zip at $src — release layout may have changed."
     }
     Copy-Item -Path $src -Destination (Join-Path $Win64Dst $dll) -Force
-    Write-Host "  [STAGE] $dll (from UE ShaderConductor) -> $Win64Dst"
+    Write-Host "  [STAGE] $dll (DXC $DxcVersion, MS official) -> $Win64Dst"
 }
 
 # --- Headers: LiteRT C API ---

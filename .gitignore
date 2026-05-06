@@ -1,2 +1,8 @@
 Binaries/
 Intermediate/
+
+# Build-script cache: downloaded prebuilts staged from third parties
+# (e.g. Microsoft DXC v1.9.2602 zip pinned by vendor/LiteRT-LM/WORKSPACE).
+# build-win64.ps1 redownloads on demand; checking the zip in would just
+# bloat the repo.
+LiteRT/.cache/
