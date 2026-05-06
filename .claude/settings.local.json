@@ -1,7 +1,12 @@
 {
   "permissions": {
     "allow": [
-      "WebSearch"
+      "WebSearch",
+      "Bash(git -C \"E:/Projects/InoProject/Plugins/InoLiteRT\" status)",
+      "Bash(git -C \"E:/Projects/InoProject/Plugins/InoLiteRT\" remote -v)",
+      "Bash(git -C \"E:/Projects/InoProject/Plugins/InoLiteRT\" submodule add https://github.com/neuphonic/neutts.git Convert/NeuTTS/vendor/neutts)",
+      "Bash(git -C \"E:/Projects/InoProject/Plugins/InoLiteRT/Convert/NeuTTS/vendor/neutts\" rev-parse HEAD)",
+      "Bash(git -C \"E:/Projects/InoProject/Plugins/InoLiteRT\" log --oneline -5)"
     ]
   }
 }
