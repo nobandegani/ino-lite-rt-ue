@@ -46,6 +46,7 @@
 //   - v0.10.2                                   ->  44 functions
 //   - 4dbbf937 (post-v0.10.2 main, 2026-04-27)  ->  75 functions
 //   - v0.11.0-rc.1 (7d1923da, 2026-04-29)       ->  82 functions
+//   - v0.11.0      (668e745f, post-rc.1)        ->  82 functions  (no set delta)
 
 #include "c/engine.h"
 
