@@ -6,7 +6,21 @@
       "Bash(git -C \"E:/Projects/InoProject/Plugins/InoLiteRT\" remote -v)",
       "Bash(git -C \"E:/Projects/InoProject/Plugins/InoLiteRT\" submodule add https://github.com/neuphonic/neutts.git Convert/NeuTTS/vendor/neutts)",
       "Bash(git -C \"E:/Projects/InoProject/Plugins/InoLiteRT/Convert/NeuTTS/vendor/neutts\" rev-parse HEAD)",
-      "Bash(git -C \"E:/Projects/InoProject/Plugins/InoLiteRT\" log --oneline -5)"
+      "Bash(git -C \"E:/Projects/InoProject/Plugins/InoLiteRT\" log --oneline -5)",
+      "Bash(chmod +x /Users/inoland/UE5/ino-lite-rt-ue/LiteRT/scripts/setup.sh)",
+      "Bash(chmod +x /Users/inoland/UE5/ino-lite-rt-ue/LiteRT/scripts/build-macos.sh)",
+      "Bash(chmod +x /Users/inoland/UE5/ino-lite-rt-ue/LiteRT/scripts/build-ios.sh)",
+      "Bash(bash -n /Users/inoland/UE5/ino-lite-rt-ue/LiteRT/scripts/setup.sh)",
+      "Bash(bash -n /Users/inoland/UE5/ino-lite-rt-ue/LiteRT/scripts/build-macos.sh)",
+      "Bash(bash -n /Users/inoland/UE5/ino-lite-rt-ue/LiteRT/scripts/build-ios.sh)",
+      "Bash(chmod +x /Users/inoland/UE5/ino-lite-rt-ue/LiteRT/scripts/clean.sh)",
+      "Bash(bash -n /Users/inoland/UE5/ino-lite-rt-ue/LiteRT/scripts/clean.sh)",
+      "Bash(git -c core.hooksPath=/dev/null -c filter.lfs.required=false -c filter.lfs.smudge=cat -c filter.lfs.process= -c filter.lfs.clean=cat status --ignore-submodules=dirty)",
+      "Bash(git -c filter.lfs.required=false -c filter.lfs.smudge=cat -c filter.lfs.process= -c filter.lfs.clean=cat diff --stat --ignore-submodules=dirty)",
+      "Bash(git -c filter.lfs.required=false -c filter.lfs.smudge=cat -c filter.lfs.process= -c filter.lfs.clean=cat diff --ignore-submodules=dirty CLAUDE.md README.md LiteRT/overlay/ino/BUILD.bazel Source/InoLiteRT/InoLiteRT.Build.cs)",
+      "Bash(git -c filter.lfs.required=false -c filter.lfs.smudge=cat -c filter.lfs.process= -c filter.lfs.clean=cat add CLAUDE.md README.md LiteRT/overlay/ino/BUILD.bazel Source/InoLiteRT/InoLiteRT.Build.cs Source/InoLiteRT/Private/InoLiteRT.cpp Source/InoLiteRT/Public/InoLiteRT.h LiteRT/scripts/build-ios.sh LiteRT/scripts/build-macos.sh LiteRT/scripts/clean.sh LiteRT/scripts/setup.sh)",
+      "Bash(git -c filter.lfs.required=false -c filter.lfs.smudge=cat -c filter.lfs.process= -c filter.lfs.clean=cat commit -m ' *)",
+      "Bash(git -c filter.lfs.required=false -c filter.lfs.smudge=cat -c filter.lfs.process= -c filter.lfs.clean=cat status --ignore-submodules=dirty)"
     ]
   }
 }
