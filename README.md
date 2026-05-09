@@ -6,8 +6,16 @@ Unreal Engine 5.7 runtime plugin that builds Google's
 runtimes from source via Bazel and exposes them as a UE module for
 consumer plugins (e.g. `InoAgents`) to link against.
 
-Target platforms: **Windows x64** and **Android** (`arm64-v8a`,
-`x86_64`). iOS / Linux / macOS are scaffolded but not built.
+Target platforms:
+
+- **Windows x64** — `build-win64.ps1` (Windows host)
+- **Android** `arm64-v8a` + `x86_64` — `build-android.ps1` (Windows host)
+- **Mac arm64** (Apple Silicon) — `build-macos.sh` (macOS host)
+- **iOS** `arm64` device + `sim_arm64` simulator — `build-ios.sh --arch …`
+  (macOS host). Output is `.framework` bundles for App Store compliance.
+
+Linux is scaffolded but not built. Mac x86_64 is unsupported (upstream
+LiteRT-LM has no `macos_x86_64` prebuilts).
 
 The plugin owns three submodules under `LiteRT/vendor/`:
 

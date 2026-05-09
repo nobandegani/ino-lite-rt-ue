@@ -57,32 +57,41 @@ public class InoLiteRT : ModuleRules
 		// LiteRT + LiteRT-LM third-party integration
 		// =====================================================================
 		// This is the only UE module in the plugin, so it owns the third-party
-		// wiring directly (no separate external module). Build artifacts are
-		// produced by Plugins/InoLiteRT/LiteRT/scripts/build-win64.ps1
-		// and staged into the consolidated tree:
+		// wiring directly (no separate external module). Per-platform build
+		// scripts live under Plugins/InoLiteRT/LiteRT/scripts/:
+		//   build-win64.ps1   Windows host -> Win64 artifacts
+		//   build-android.ps1 Windows host -> Android arm64-v8a / x86_64
+		//   build-macos.sh    macOS host   -> Mac arm64 (Apple Silicon)
+		//   build-ios.sh      macOS host   -> iOS arm64 device / sim_arm64
 		//
-		//     Source/ThirdParty/Public/litert/c/         LiteRT C API headers
+		// All scripts stage into a single consolidated tree:
+		//
+		//     Source/ThirdParty/Public/litert/c/           LiteRT C API headers
 		//     Source/ThirdParty/Public/litert/c/internal/  LiteRT internal headers
 		//     Source/ThirdParty/Public/litert/c/options/   LiteRT per-vendor options headers
-		//     Source/ThirdParty/Public/litert/lm/        LiteRT-LM C API header
-		//     Source/ThirdParty/Win64/libLiteRt.lib      LiteRT import lib
-		//     Source/ThirdParty/Win64/LiteRtLm.lib       LiteRT-LM import lib
-		//     Source/ThirdParty/Win64/libLiteRt.dll      LiteRT runtime
-		//     Source/ThirdParty/Win64/LiteRtLm.dll       LiteRT-LM runtime
-		//     Source/ThirdParty/Win64/libGemmaModelConstraintProvider.dll
-		//     Source/ThirdParty/Win64/libLiteRtWebGpuAccelerator.dll
-		//     Source/ThirdParty/Win64/libLiteRtTopKWebGpuSampler.dll
-		//     Source/ThirdParty/Win64/dxcompiler.dll     DirectX Shader Compiler
-		//     Source/ThirdParty/Win64/dxil.dll           DXIL signing helper
+		//     Source/ThirdParty/Public/litert/lm/          LiteRT-LM C API header
+		//     Source/ThirdParty/Public/litert/build_common/ build_config.h
+		//     Source/ThirdParty/Win64/                     Windows DLLs + import libs
+		//     Source/ThirdParty/Android/<arch>/            Android .so files (per-ABI)
+		//     Source/ThirdParty/Mac/                       macOS .dylib files (arm64)
+		//     Source/ThirdParty/IOS/<arch>/                iOS .framework + .framework.zip
 		//
-		// dxcompiler.dll + dxil.dll are required at runtime by the two
-		// WebGPU accelerator DLLs above when LiteRT-LM is started with
-		// backend=gpu — Dawn calls LoadLibraryA("dxcompiler.dll") /
-		// ("dxil.dll") to translate WGSL → HLSL → DXIL during D3D12
-		// device init. Editor PIE happens to find them via UE's CEF3 /
-		// ShaderConductor preload; packaged builds need them explicitly
-		// staged. They're inert until LiteRT GPU is actually used, so
-		// shipping them is free for CPU-only consumers.
+		// Win64-specific notes:
+		//     dxcompiler.dll + dxil.dll are required at runtime by the two
+		//     WebGPU accelerator DLLs when LiteRT-LM is started with
+		//     backend=gpu — Dawn calls LoadLibraryA("dxcompiler.dll") /
+		//     ("dxil.dll") to translate WGSL -> HLSL -> DXIL during D3D12
+		//     device init. Editor PIE happens to find them via UE's CEF3 /
+		//     ShaderConductor preload; packaged builds need them explicitly
+		//     staged.
+		//
+		// iOS-specific notes:
+		//     App Store policy requires every dynamic library to be an
+		//     embedded .framework bundle inside MyApp.app/Frameworks/,
+		//     code-signed with the app's distribution identity. The build
+		//     script wraps each upstream .dylib into a proper framework
+		//     layout and rewrites install_names to @rpath/<Name>.framework/
+		//     <Name>. UE's IOSToolChain handles embedding + signing.
 		//
 		// Companion files in this same directory:
 		//     InoLiteRT.tps                  third-party software notification
@@ -92,6 +101,8 @@ public class InoLiteRT : ModuleRules
 		string PublicDir     = Path.Combine(ThirdPartyDir, "Public");
 		string Win64Dir      = Path.Combine(ThirdPartyDir, "Win64");
 		string AndroidBaseDir = Path.Combine(ThirdPartyDir, "Android");
+		string MacDir        = Path.Combine(ThirdPartyDir, "Mac");
+		string IOSBaseDir    = Path.Combine(ThirdPartyDir, "IOS");
 
 		// Public headers — consumers do
 		//     #include "litert/c/litert_compiled_model.h"
@@ -187,7 +198,141 @@ public class InoLiteRT : ModuleRules
 				"AndroidPlugin",
 				Path.Combine(ModuleDirectory, "InoLiteRT_UPL_Android.xml"));
 		}
-		// iOS / Linux / macOS: not yet implemented. Linking succeeds because
-		// no static references; runtime calls fail gracefully.
+		else if (Target.Platform == UnrealTargetPlatform.Mac)
+		{
+			// Mac artifacts produced by
+			// Plugins/InoLiteRT/LiteRT/scripts/build-macos.sh
+			// staged under Source/ThirdParty/Mac/. Apple Silicon (arm64)
+			// only — upstream LiteRT-LM does not ship macos_x86_64 prebuilts.
+			//
+			// Unlike Windows there are no separate import libraries on Mac:
+			// the .dylib is added directly to PublicAdditionalLibraries and
+			// dyld resolves @rpath references at runtime. The build script
+			// uses install_name_tool to set every dylib's LC_ID_DYLIB to
+			// @rpath/<name>.dylib so UE's @loader_path rpath setup finds
+			// them in the cooked bundle.
+			//
+			// Load order matters at runtime (libLiteRtLm imports from libLiteRt
+			// when --define=litert_link_capi_so=true is used at build time),
+			// but on Mac dyld discovers and resolves dependencies automatically
+			// via LC_LOAD_DYLIB entries. We don't need to pre-load by hand
+			// like we do on Windows — though InoLiteRT.cpp's StartupModule
+			// does pre-load anyway as a hard signal that staging worked.
+			string[] MacDylibs = new string[]
+			{
+				"libLiteRt.dylib",                       // LiteRT core (prebuilt)
+				"libLiteRtLm.dylib",                     // our Bazel-built LLM runtime
+				"libGemmaModelConstraintProvider.dylib", // constrained decoding (prebuilt)
+				"libLiteRtMetalAccelerator.dylib",       // Metal GPU backend (prebuilt)
+				"libLiteRtTopKMetalSampler.dylib",       // Metal top-K sampler (prebuilt)
+				"libLiteRtWebGpuAccelerator.dylib",      // WebGPU GPU backend (prebuilt)
+				"libLiteRtTopKWebGpuSampler.dylib",      // WebGPU top-K sampler (prebuilt)
+			};
+
+			foreach (string Dylib in MacDylibs)
+			{
+				string DylibPath = Path.Combine(MacDir, Dylib);
+				if (File.Exists(DylibPath))
+				{
+					// Link-time: tells UBT to add this dylib to the LC_LOAD_DYLIB
+					// list of the consuming binary, so dyld resolves it at launch.
+					PublicAdditionalLibraries.Add(DylibPath);
+
+					// Stage at packaging time. NonUFS so the file lands in the
+					// .app bundle alongside the engine binaries rather than
+					// being cooked into Pak files (.dylib must be loadable by
+					// the OS, not extracted from a pak).
+					RuntimeDependencies.Add(DylibPath);
+				}
+			}
+
+			// Apple system frameworks. Metal is the native GPU API the prebuilt
+			// libLiteRtMetalAccelerator.dylib calls into; Foundation provides
+			// NSObject / NSString that the Metal accelerator uses internally.
+			// Listing them here pulls them into the consuming binary's link
+			// step so dyld can resolve them when the accelerator is dlopen'd.
+			PublicFrameworks.AddRange(new string[] { "Metal", "Foundation" });
+		}
+		else if (Target.Platform == UnrealTargetPlatform.IOS)
+		{
+			// iOS artifacts produced by
+			// Plugins/InoLiteRT/LiteRT/scripts/build-ios.sh --arch arm64|sim_arm64
+			// staged as .framework bundles under Source/ThirdParty/IOS/<arch>/.
+			//
+			// App Store policy requires every dynamic library to be an embedded
+			// .framework bundle inside MyApp.app/Frameworks/, code-signed with
+			// the app's distribution identity. Raw .dylib loads are auto-rejected
+			// at submission. The build script wraps each upstream dylib into a
+			// proper framework (binary + Info.plist) and the install_name_tool
+			// step rewrites every cross-library reference to
+			// @rpath/<Name>.framework/<Name>.
+			//
+			// We must select the arm64 (device) vs sim_arm64 (simulator) variant
+			// at Build.cs time — UE's IOSToolChain only embeds frameworks listed
+			// in PublicAdditionalFrameworks for the target's active architecture,
+			// and the framework binaries differ between the two slices.
+			//
+			// Detect simulator via foreach rather than UnrealArchitectures.Contains
+			// for max version safety — Contains-on-collection landed in UBT in
+			// UE 5.5; an explicit loop works back to UE 5.0.
+			bool bIsIOSSimulator = false;
+			foreach (UnrealArch Arch in Target.Architectures.Architectures)
+			{
+				if (Arch == UnrealArch.IOSSimulator)
+				{
+					bIsIOSSimulator = true;
+					break;
+				}
+			}
+			string IOSArchDir = bIsIOSSimulator
+				? Path.Combine(IOSBaseDir, "sim_arm64")
+				: Path.Combine(IOSBaseDir, "arm64");
+
+			// Map of framework names to ship — derived from the .dylib basenames
+			// the build script produces. iOS device + sim arm64 both ship the
+			// LiteRt + Gemma + Metal accel frameworks; the device build also
+			// ships the Metal top-K sampler (sim_arm64 prebuilt omits it).
+			//
+			// IMPORTANT: order does NOT determine load sequence on iOS — dyld
+			// computes the dependency graph from each framework's LC_LOAD_DYLIB
+			// entries when the app launches. The order here only affects link
+			// order, which is irrelevant for these dylibs (none expose link-time
+			// imports we statically reference).
+			string[] IOSFrameworks = new string[]
+			{
+				"LiteRt",                       // LiteRT core (libLiteRt.dylib wrapped)
+				"LiteRtLm",                     // our Bazel-built LLM runtime
+				"GemmaModelConstraintProvider", // constrained decoding (prebuilt)
+				"LiteRtMetalAccelerator",       // Metal GPU backend (prebuilt)
+				"LiteRtTopKMetalSampler",       // Metal top-K sampler (prebuilt; device-only)
+			};
+
+			foreach (string FwName in IOSFrameworks)
+			{
+				string FwZip = Path.Combine(IOSArchDir, FwName + ".framework.zip");
+				if (File.Exists(FwZip))
+				{
+					// bCopyFramework=true tells UE's IOSToolChain to:
+					//   1. Unzip the framework into Intermediate/IOS/.../Frameworks/
+					//   2. Copy it into the .app bundle's Frameworks/ dir
+					//   3. Re-sign it with the app's distribution identity at
+					//      packaging time
+					// CopyBundledAssets is null because our frameworks contain
+					// no resource bundles (just the binary + Info.plist).
+					PublicAdditionalFrameworks.Add(
+						new Framework(FwName, FwZip, /*CopyBundledAssets=*/null, /*bCopyFramework=*/true));
+				}
+			}
+
+			// Apple system frameworks. Same rationale as Mac: link-time
+			// references for Metal/Foundation so dyld resolves them when
+			// libLiteRtMetalAccelerator dlopens at runtime.
+			PublicFrameworks.AddRange(new string[] { "Metal", "Foundation" });
+		}
+		// Linux: not yet implemented. Upstream ships prebuilt/linux_arm64/ and
+		// prebuilt/linux_x86_64/ but we haven't wired a build script for it.
+		// Linking succeeds because no static references; runtime calls fail
+		// gracefully (the smoke test in InoLiteRT.cpp is gated on supported
+		// platforms).
 	}
 }

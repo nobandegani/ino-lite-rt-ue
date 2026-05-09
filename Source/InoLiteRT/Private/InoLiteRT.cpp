@@ -21,14 +21,14 @@
 #endif
 
 // LiteRT-LM C API — staged into Source/ThirdParty/Public/litert/lm/ by
-// LiteRT/scripts/build-win64.ps1. Used here only for the trivial
+// the platform-specific build scripts. Used here only for the trivial
 // litert_lm_set_min_log_level() startup smoke test. Substantial calls
 // happen in consumer subsystems (ported in later phases).
 //
-// Gated to platforms where the runtime DLL/.so actually ships — on
-// iOS/Linux/macOS we have no library to link against, so even an
+// Gated to platforms where the runtime library actually ships. Linux is
+// excluded — we don't have a build script wired for it yet, so even an
 // unused reference to litert_lm_set_min_log_level would break linking.
-#if PLATFORM_WINDOWS || PLATFORM_ANDROID
+#if PLATFORM_WINDOWS || PLATFORM_ANDROID || PLATFORM_MAC || PLATFORM_IOS
 #include "litert/lm/engine.h"
 #endif
 
@@ -65,9 +65,17 @@ namespace
 		// All Win64 artifacts (DLLs + import libs) live under
 		// Source/ThirdParty/Win64/ in the consolidated layout.
 		return FPaths::Combine(BaseDir, TEXT("Source/ThirdParty/Win64"), DllFileName);
+#elif PLATFORM_MAC
+		// Mac dylibs live under Source/ThirdParty/Mac/. Same flat layout
+		// as Win64 — Apple Silicon (arm64) is the only supported macOS
+		// arch so no per-arch subdir.
+		return FPaths::Combine(BaseDir, TEXT("Source/ThirdParty/Mac"), DllFileName);
 #else
-		// iOS / Linux / macOS not yet implemented.
-		// Returning empty causes GetDllHandle() to no-op gracefully.
+		// iOS / Linux / Android: not addressable by file path. iOS uses
+		// embedded .framework bundles resolved by dyld; Android uses .so
+		// files resolved by the dynamic linker. Returning empty causes
+		// GetDllHandle() to no-op gracefully — these platforms don't
+		// invoke this helper anyway.
 		return FString();
 #endif
 	}
@@ -160,10 +168,10 @@ namespace
 		const FString Path = ResolveStagedDllPath(DllFileName);
 		if (Path.IsEmpty())
 		{
-#if PLATFORM_WINDOWS
-			// On Windows, ResolveStagedDllPath only returns empty when
-			// IPluginManager fails — already logged as Error there.
-			// Don't double-log.
+#if PLATFORM_WINDOWS || PLATFORM_MAC
+			// Win64 + Mac always return a non-empty path on success;
+			// empty means IPluginManager failed — already logged as
+			// Error in ResolveStagedDllPath. Don't double-log.
 #else
 			UE_LOG(LogInoLiteRT, Warning,
 				TEXT("InoLiteRT: not loading %s (unsupported platform)"),
@@ -186,7 +194,8 @@ namespace
 		{
 			UE_LOG(LogInoLiteRT, Error,
 				TEXT("InoLiteRT: failed to load %s from %s. Did you run "
-					 "Plugins/InoLiteRT/LiteRT/scripts/build-win64.ps1?"),
+					 "the matching script under Plugins/InoLiteRT/LiteRT/scripts/ "
+					 "(build-win64.ps1 / build-android.ps1 / build-macos.sh)?"),
 				DllFileName, *Path);
 		}
 		return Handle;
@@ -245,6 +254,53 @@ void FInoLiteRTModule::StartupModule()
 	}
 
 	const bool bCanCallLiteRtLm = (LiteRtLmHandle != nullptr);
+#elif PLATFORM_MAC
+	// Mac load order — same dependency reasoning as Windows minus DXC
+	// (DirectX Shader Compiler is Windows-only):
+	//
+	//   1. libGemmaModelConstraintProvider.dylib  standalone, no deps
+	//   2. libLiteRt.dylib                        LiteRT core
+	//   3. libLiteRtLm.dylib                      imports from libLiteRt
+	//   4. libLiteRtMetalAccelerator.dylib        Metal GPU backend (preferred)
+	//   5. libLiteRtTopKMetalSampler.dylib        Metal-side top-K sampling
+	//   6. libLiteRtWebGpuAccelerator.dylib       optional WebGPU path (Dawn -> Metal)
+	//   7. libLiteRtTopKWebGpuSampler.dylib       optional WebGPU top-K
+	//
+	// dyld would resolve LC_LOAD_DYLIB entries automatically at app launch,
+	// so manual pre-loading is not strictly required — but doing it gives
+	// us a hard Log/Error signal that staging is correct, in both editor
+	// and packaged builds. Failure of an optional accelerator is non-fatal:
+	// the LiteRT engine falls back to CPU when no GPU backend loads.
+	GemmaConstraintProviderHandle = LoadStagedDll(TEXT("libGemmaModelConstraintProvider.dylib"));
+	LiteRtHandle                  = LoadStagedDll(TEXT("libLiteRt.dylib"));
+	LiteRtLmHandle                = LoadStagedDll(TEXT("libLiteRtLm.dylib"));
+
+	if (LiteRtHandle)
+	{
+		MetalAcceleratorHandle  = LoadStagedDll(TEXT("libLiteRtMetalAccelerator.dylib"));
+		TopKMetalSamplerHandle  = LoadStagedDll(TEXT("libLiteRtTopKMetalSampler.dylib"));
+		WebGpuAcceleratorHandle = LoadStagedDll(TEXT("libLiteRtWebGpuAccelerator.dylib"));
+		TopKWebGpuSamplerHandle = LoadStagedDll(TEXT("libLiteRtTopKWebGpuSampler.dylib"));
+	}
+
+	const bool bCanCallLiteRtLm = (LiteRtLmHandle != nullptr);
+#elif PLATFORM_IOS
+	// iOS: frameworks are embedded into MyApp.app/Frameworks/ at packaging
+	// time and resolved by dyld at launch via @rpath in each framework's
+	// LC_ID_DYLIB / LC_LOAD_DYLIB load commands. We can't (and shouldn't)
+	// dlopen frameworks at runtime — App Store validation rejects apps
+	// that load arbitrary code paths. The dependency graph:
+	//
+	//   LiteRtLm.framework -> LiteRt.framework
+	//                      -> GemmaModelConstraintProvider.framework
+	//   LiteRtMetalAccelerator.framework -> LiteRt.framework
+	//   LiteRtTopKMetalSampler.framework -> LiteRt.framework
+	//
+	// is resolved by dyld at app launch via the @rpath/<Name>.framework/
+	// <Name> install_names that build-ios.sh sets via install_name_tool.
+	// By the time StartupModule runs, every symbol in litert_lm_*() is
+	// already mapped into the process — no manual handle bookkeeping.
+	const bool bCanCallLiteRtLm = true;
 #elif PLATFORM_ANDROID
 	// On Android, .so files are loaded automatically by the dynamic linker
 	// at process startup. Our libUnreal.so links against libLiteRtLm.so
@@ -255,18 +311,20 @@ void FInoLiteRTModule::StartupModule()
 	// preload the libs (harmless but redundant given DT_NEEDED resolution).
 	const bool bCanCallLiteRtLm = true;
 #else
-	// iOS / Linux / macOS: no LiteRT-LM library is shipped. The smoke
-	// test would fail at link time (no symbol to resolve), so skip it.
+	// Linux: no LiteRT-LM library is shipped. The smoke test would fail
+	// at link time (no symbol to resolve), so skip it.
 	const bool bCanCallLiteRtLm = false;
 #endif
 
 	// --------------------------------------------------------------
 	// Trivial startup smoke test: call one cheap C API function so we
-	// know the LiteRT-LM library is loaded and callable. On Windows
-	// this proves the delay-load trampolines and import lib wiring.
-	// On Android this proves the linker resolved against our .so.
+	// know the LiteRT-LM library is loaded and callable.
+	//   Windows: proves the delay-load trampolines + import lib wiring.
+	//   Mac:     proves the @rpath dyld lookup found our staged dylibs.
+	//   iOS:     proves the embedded framework loaded with the app.
+	//   Android: proves the linker resolved against our .so.
 	// --------------------------------------------------------------
-#if PLATFORM_WINDOWS || PLATFORM_ANDROID
+#if PLATFORM_WINDOWS || PLATFORM_ANDROID || PLATFORM_MAC || PLATFORM_IOS
 	if (bCanCallLiteRtLm)
 	{
 		litert_lm_set_min_log_level(0);
@@ -317,11 +375,23 @@ void FInoLiteRTModule::ShutdownModule()
 		FPlatformProcess::FreeDllHandle(DxCompilerHandle);
 		DxCompilerHandle = nullptr;
 	}
-#endif  // PLATFORM_WINDOWS
+#elif PLATFORM_MAC
+	// Mac: same reverse-dependency order as Windows minus DXC. dyld would
+	// also clean these up at process exit, but explicit FreeDllHandle
+	// keeps the editor PIE workflow tidy when the module is reloaded.
+	if (TopKWebGpuSamplerHandle)       { FPlatformProcess::FreeDllHandle(TopKWebGpuSamplerHandle);       TopKWebGpuSamplerHandle       = nullptr; }
+	if (WebGpuAcceleratorHandle)       { FPlatformProcess::FreeDllHandle(WebGpuAcceleratorHandle);       WebGpuAcceleratorHandle       = nullptr; }
+	if (TopKMetalSamplerHandle)        { FPlatformProcess::FreeDllHandle(TopKMetalSamplerHandle);        TopKMetalSamplerHandle        = nullptr; }
+	if (MetalAcceleratorHandle)        { FPlatformProcess::FreeDllHandle(MetalAcceleratorHandle);        MetalAcceleratorHandle        = nullptr; }
+	if (LiteRtLmHandle)                { FPlatformProcess::FreeDllHandle(LiteRtLmHandle);                LiteRtLmHandle                = nullptr; }
+	if (LiteRtHandle)                  { FPlatformProcess::FreeDllHandle(LiteRtHandle);                  LiteRtHandle                  = nullptr; }
+	if (GemmaConstraintProviderHandle) { FPlatformProcess::FreeDllHandle(GemmaConstraintProviderHandle); GemmaConstraintProviderHandle = nullptr; }
+#endif  // PLATFORM_WINDOWS / PLATFORM_MAC
 
-	// On Android / iOS / Linux / macOS: nothing to unload — shared
-	// libraries are managed by the OS dynamic linker and freed at
-	// process exit along with the rest of the game process.
+	// On Android / iOS / Linux: nothing to unload — shared libraries are
+	// managed by the OS dynamic linker and freed at process exit along
+	// with the rest of the game process. iOS specifically does not
+	// expose dlclose for embedded frameworks anyway.
 }
 
 #undef LOCTEXT_NAMESPACE

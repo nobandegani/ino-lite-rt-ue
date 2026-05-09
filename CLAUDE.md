@@ -22,8 +22,10 @@ Plugins/InoLiteRT/
 ```
 
 - **`LiteRT/`** — owns the build pipeline. Bazel workspace, build scripts
-  (`build-win64.ps1`, `build-android.ps1`, `setup.ps1`, `clean.ps1`),
-  vendored upstream submodules. Outputs land in `Source/ThirdParty/`.
+  (`build-win64.ps1` + `build-android.ps1` + `setup.ps1` + `clean.ps1` for
+  Windows hosts; `build-macos.sh` + `build-ios.sh` + `setup.sh` for macOS
+  hosts), vendored upstream submodules. Outputs land in
+  `Source/ThirdParty/`.
 - **`Convert/`** — dev-time tooling for taking external models (PyTorch,
   HF, etc.) and producing `.tflite` artifacts that LiteRT/LiteRT-LM can
   load. Per-model subfolders.
@@ -33,8 +35,18 @@ Plugins/InoLiteRT/
 
 ## Target platforms
 
-Win64 and Android (arm64-v8a + x86_64). iOS, Linux, macOS are scaffolded
-but not built.
+| Platform | Architectures | Build host | Script |
+|---|---|---|---|
+| Win64 | x86_64 | Windows | `build-win64.ps1` |
+| Android | arm64-v8a, x86_64 | Windows | `build-android.ps1` |
+| Mac | arm64 (Apple Silicon) | macOS arm64 | `build-macos.sh` |
+| iOS | arm64 device, sim_arm64 | macOS arm64 | `build-ios.sh --arch …` |
+
+Linux is scaffolded but not built. Mac x86_64 is unsupported (upstream
+LiteRT-LM ships no `macos_x86_64` prebuilts; Apple Silicon is the M1+ era).
+iOS frameworks are App Store-compliant — `.dylib` files are wrapped into
+`.framework` bundles and embedded into `MyApp.app/Frameworks/` at packaging
+time, signed with the app's distribution identity by UE's IOSToolChain.
 
 ## How other plugins consume this
 

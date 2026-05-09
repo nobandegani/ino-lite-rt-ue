@@ -77,6 +77,35 @@ cc_binary(
             "-lEGL",
             "-lGLESv3",
         ],
+        "@platforms//os:osx": [
+            # macOS arm64 (Apple Silicon). The //c:engine dep graph pulls in
+            # CPU-only paths by default; libLiteRtLm.dylib does NOT directly
+            # call Metal — the prebuilt libLiteRtMetalAccelerator.dylib /
+            # libLiteRtTopKMetalSampler.dylib do, and they're loaded at
+            # runtime via dlopen by the LiteRT engine. So we don't need
+            # -framework Metal here.
+            #
+            # Upstream's build:macos sets --linkopt=-Wl,-undefined,dynamic_lookup
+            # which lets us defer libLiteRt.dylib symbol resolution to dlopen
+            # time. With --define=litert_link_capi_so=true the build expects
+            # libLiteRt.dylib to satisfy those undefineds at runtime; since
+            # we ship the prebuilt libLiteRt.dylib alongside libLiteRtLm.dylib
+            # and the install_name fix-up step in build-macos.sh sets both
+            # to @rpath form, the dyld runtime loader resolves them
+            # correctly when the consuming app loads them in order.
+        ],
+        "@platforms//os:ios": [
+            # iOS (device arm64 + simulator arm64). Same reasoning as macOS:
+            # Metal is loaded via the prebuilt accelerator dylib at runtime
+            # rather than at link time. iOS does NOT support
+            # -Wl,-undefined,dynamic_lookup the way macOS does (App Store
+            # validation rejects it), so the build relies on each dylib
+            # listing its imports explicitly. The litert_link_capi_so build
+            # variant declares libLiteRt.dylib as a runtime dependency
+            # which the iOS dynamic loader honors when our framework
+            # wrapping (build-ios.sh) sets matching @rpath install_names
+            # on every staged dylib.
+        ],
         "//conditions:default": [],
     }),
     deps = [
