@@ -20,7 +20,14 @@
       "Bash(git -c filter.lfs.required=false -c filter.lfs.smudge=cat -c filter.lfs.process= -c filter.lfs.clean=cat diff --ignore-submodules=dirty CLAUDE.md README.md LiteRT/overlay/ino/BUILD.bazel Source/InoLiteRT/InoLiteRT.Build.cs)",
       "Bash(git -c filter.lfs.required=false -c filter.lfs.smudge=cat -c filter.lfs.process= -c filter.lfs.clean=cat add CLAUDE.md README.md LiteRT/overlay/ino/BUILD.bazel Source/InoLiteRT/InoLiteRT.Build.cs Source/InoLiteRT/Private/InoLiteRT.cpp Source/InoLiteRT/Public/InoLiteRT.h LiteRT/scripts/build-ios.sh LiteRT/scripts/build-macos.sh LiteRT/scripts/clean.sh LiteRT/scripts/setup.sh)",
       "Bash(git -c filter.lfs.required=false -c filter.lfs.smudge=cat -c filter.lfs.process= -c filter.lfs.clean=cat commit -m ' *)",
-      "Bash(git -c filter.lfs.required=false -c filter.lfs.smudge=cat -c filter.lfs.process= -c filter.lfs.clean=cat status --ignore-submodules=dirty)"
+      "Bash(git -c filter.lfs.required=false -c filter.lfs.smudge=cat -c filter.lfs.process= -c filter.lfs.clean=cat status --ignore-submodules=dirty)",
+      "Bash(command -v bazelisk)",
+      "Bash(command -v xcode-select)",
+      "Bash(xcode-select -p)",
+      "Bash(brew install *)",
+      "Bash(bazelisk version *)",
+      "Bash(./LiteRT/scripts/build-macos.sh)",
+      "Bash(tee /tmp/build-macos.log)"
     ]
   }
 }
