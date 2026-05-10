@@ -12,7 +12,15 @@ The .pt file contains everything the runtime needs to clone this voice:
 """
 
 import argparse
+import sys
 from pathlib import Path
+
+# Make vendored neucodec package importable (Convert/NeuCodec/vendor/neucodec/).
+_NEUCODEC_VENDOR = (
+    Path(__file__).resolve().parent.parent.parent / "NeuCodec" / "vendor" / "neucodec"
+)
+if str(_NEUCODEC_VENDOR) not in sys.path:
+    sys.path.insert(0, str(_NEUCODEC_VENDOR))
 
 import torch
 from librosa import load
