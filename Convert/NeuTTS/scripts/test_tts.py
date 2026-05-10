@@ -111,7 +111,7 @@ def main():
                    help="Override codec .tflite path (default: derived from --quant and --codec_frames).")
     p.add_argument("--tokenizer_dir", default="models/nano")
     p.add_argument("--out", default=None,
-                   help="Override output WAV path (default: generated/<quant>/test.wav).")
+                   help="Override output WAV path (default: generated/<quant>/<text>.wav).")
     p.add_argument("--seed", type=int, default=42)
     args = p.parse_args()
     max_speech_tokens = args.codec_frames
@@ -129,7 +129,14 @@ def main():
             f"../NeuCodec/output/neucodec_decoder_f{args.codec_frames}_{codec_suffix}.tflite"
         )
     if args.out is None:
-        args.out = f"generated/{args.quant}/test.wav"
+        # Sanitize input text into a filename stem: lowercase, alnum + spaces only,
+        # spaces -> underscores. e.g. "How are you?" -> "how_are_you".
+        import re
+        stem = re.sub(r"[^a-z0-9 ]+", "", args.text.lower()).strip()
+        stem = re.sub(r"\s+", "_", stem)
+        if not stem:
+            stem = "test"
+        args.out = f"generated/{args.quant}/{stem}.wav"
 
     np.random.seed(args.seed)
 
