@@ -232,11 +232,12 @@ def main():
     if not speech_codes:
         raise SystemExit("Model produced no speech codes; aborting.")
 
-    # Pad to F=50
-    while len(speech_codes) < max_speech_tokens:
-        speech_codes.append(0)
-    speech_codes = speech_codes[:max_speech_tokens]
-    codes_np = np.array([[speech_codes]], dtype=np.int64)
+    # Codec graph has a fixed F. Pad the codes vector to that length;
+    # we'll trim the codec's audio output to discard the padding's noise.
+    n_real = len(speech_codes)
+    padded = speech_codes + [0] * (max_speech_tokens - n_real)
+    padded = padded[:max_speech_tokens]
+    codes_np = np.array([[padded]], dtype=np.int64)
 
     print(f"[7/7] Decoding codec...")
     codec = litert_interpreter.Interpreter(model_path=args.codec)
@@ -246,6 +247,13 @@ def main():
     )
     audio = codec_runner(codes=codes_np)
     audio_wave = list(audio.values())[0][0, 0, :]
+
+    # Trim to the real-codes audio length: 480 samples per FSQ frame (24 kHz
+    # / 50 Hz codes). Anything beyond is the codec hallucinating audio for
+    # our zero-padding — drop it.
+    trim = min(len(audio_wave), n_real * 480)
+    audio_wave = audio_wave[:trim]
+    print(f"  trimmed to {trim} samples ({trim/SAMPLE_RATE:.2f} s real audio)")
 
     # --- Save WAV ---------------------------------------------------
     out_path = Path(args.out)
