@@ -39,7 +39,20 @@
       "Bash(git -c filter.lfs.required=false -c filter.lfs.smudge=cat -c filter.lfs.process= -c filter.lfs.clean=cat add LiteRT/scripts/build-ios.sh Source/InoLiteRT/InoLiteRT.Build.cs)",
       "Bash(git -c filter.lfs.required=false -c filter.lfs.smudge=cat -c filter.lfs.process= -c filter.lfs.clean=cat log --oneline -3)",
       "Bash(git -c filter.lfs.required=false -c filter.lfs.smudge=cat -c filter.lfs.process= -c filter.lfs.clean=cat add Source/ThirdParty/Mac Source/ThirdParty/IOS)",
-      "Bash(git -c filter.lfs.required=false -c filter.lfs.smudge=cat -c filter.lfs.process= -c filter.lfs.clean=cat log --oneline -5)"
+      "Bash(git -c filter.lfs.required=false -c filter.lfs.smudge=cat -c filter.lfs.process= -c filter.lfs.clean=cat log --oneline -5)",
+      "Bash(git -c filter.lfs.required=false -c filter.lfs.smudge=cat -c filter.lfs.process= -c filter.lfs.clean=cat submodule status)",
+      "Bash(git -c filter.lfs.required=false -c filter.lfs.smudge=cat -c filter.lfs.process= -c filter.lfs.clean=cat -C LiteRT/vendor/LiteRT-LM status --short)",
+      "Bash(git -c filter.lfs.required=false -c filter.lfs.smudge=cat -c filter.lfs.process= -c filter.lfs.clean=cat -C LiteRT/vendor/LiteRT-LM rev-parse --short HEAD)",
+      "Bash(git -C /Users/inoland/UE5/ino-lite-rt-ue/LiteRT/vendor/LiteRT-LM rev-parse --absolute-git-dir)",
+      "Bash(git -c filter.lfs.required=false -c filter.lfs.smudge=cat -c filter.lfs.process= -c filter.lfs.clean=cat -C LiteRT/vendor/LiteRT-LM log -3 --oneline)",
+      "Bash(git -c filter.lfs.required=false -c filter.lfs.smudge=cat -c filter.lfs.process= -c filter.lfs.clean=cat -C LiteRT/vendor/LiteRT-LM symbolic-ref --short HEAD)",
+      "Bash(git -c filter.lfs.required=false -c filter.lfs.smudge=cat -c filter.lfs.process= -c filter.lfs.clean=cat add LiteRT/vendor/LiteRT-LM)",
+      "Bash(git -c filter.lfs.required=false -c filter.lfs.smudge=cat -c filter.lfs.process= -c filter.lfs.clean=cat log --oneline -7)",
+      "Bash(git -c filter.lfs.required=false -c filter.lfs.smudge=cat -c filter.lfs.process= -c filter.lfs.clean=cat submodule status LiteRT/vendor/LiteRT-LM)",
+      "Bash(git -C /Users/inoland/UE5/ino-lite-rt-ue -c filter.lfs.required=false -c filter.lfs.smudge=cat -c filter.lfs.process= -c filter.lfs.clean=cat add LiteRT/vendor/LiteRT-LM)",
+      "Bash(git -C /Users/inoland/UE5/ino-lite-rt-ue -c filter.lfs.required=false -c filter.lfs.smudge=cat -c filter.lfs.process= -c filter.lfs.clean=cat commit -m ' *)",
+      "Bash(git -C /Users/inoland/UE5/ino-lite-rt-ue -c filter.lfs.required=false -c filter.lfs.smudge=cat -c filter.lfs.process= -c filter.lfs.clean=cat log --oneline -7)",
+      "Bash(git -C /Users/inoland/UE5/ino-lite-rt-ue -c filter.lfs.required=false -c filter.lfs.smudge=cat -c filter.lfs.process= -c filter.lfs.clean=cat submodule status LiteRT/vendor/LiteRT-LM)"
     ]
   }
 }
