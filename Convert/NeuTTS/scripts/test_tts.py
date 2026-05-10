@@ -39,11 +39,11 @@ from ai_edge_litert import interpreter as litert_interpreter
 from scipy.io import wavfile
 from transformers import AutoTokenizer
 
-# Vendored phonemizer is fine — espeak comes from `phonemizer` pip package.
-sys.path.insert(0, str(
-    Path(__file__).resolve().parent.parent / "vendor" / "neutts"
-))
-from neutts.phonemizers import BasePhonemizer  # noqa: E402
+# Use phonemizer (already installed as a neutts dep) directly. Importing
+# `from neutts.phonemizers import BasePhonemizer` would pull in the
+# neutts package __init__, which transitively imports neucodec — and we
+# don't pip-install neucodec in this env.
+from phonemizer.backend import EspeakBackend  # noqa: E402
 
 # --- Constants (from models/nano/config.json + tokenizer.json) ----------
 SPEECH_OFFSET = 128262          # <|speech_0|> starts here
@@ -136,8 +136,15 @@ def main():
     print(f"  ref codes: {len(ref_codes)}, ref text: '{ref_text[:60]}...'")
 
     # --- 2. Phonemize ref_text + input_text --------------------------
+    # Same EspeakBackend settings as vendor/neutts/neutts/phonemizers.py
     print(f"[2/7] Phonemizing...")
-    phon = BasePhonemizer(language_code="en-us")
+    phon = EspeakBackend(
+        language="en-us",
+        preserve_punctuation=True,
+        with_stress=True,
+        words_mismatch="ignore",
+        language_switch="remove-flags",
+    )
     ref_phones = " ".join(phon.phonemize([ref_text])[0].split())
     in_phones = " ".join(phon.phonemize([args.text])[0].split())
     phonemes = ref_phones + " " + in_phones
