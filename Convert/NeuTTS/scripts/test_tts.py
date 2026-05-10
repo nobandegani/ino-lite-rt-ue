@@ -48,7 +48,6 @@ from phonemizer.backend import EspeakBackend  # noqa: E402
 # --- Constants (from models/nano/config.json + tokenizer.json) ----------
 SPEECH_OFFSET = 128262          # <|speech_0|> starts here
 SPEECH_END = 128261             # <|SPEECH_GENERATION_END|>
-MAX_SPEECH_TOKENS = 50          # codec bucket = F=50 -> 0.98 s of audio
 TOP_K = 50
 TEMPERATURE = 1.0
 NUM_LAYERS = 24
@@ -100,19 +99,22 @@ def main():
     }
 
     p = argparse.ArgumentParser()
-    p.add_argument("--text", required=True, help="Text to synthesize (keep short — F=50 budget).")
+    p.add_argument("--text", required=True, help="Text to synthesize.")
     p.add_argument("--quant", choices=list(quant_suffix), default="fp32",
                    help="Quantization tier. Selects matching backbone + codec + output subfolder.")
+    p.add_argument("--codec_frames", type=int, default=200,
+                   help="Codec F bucket to use (must match a converted .tflite — default 200).")
     p.add_argument("--voice", default="voices/jo.pt")
     p.add_argument("--backbone", default=None,
                    help="Override backbone .tflite path (default: derived from --quant).")
     p.add_argument("--codec", default=None,
-                   help="Override codec .tflite path (default: derived from --quant).")
+                   help="Override codec .tflite path (default: derived from --quant and --codec_frames).")
     p.add_argument("--tokenizer_dir", default="models/nano")
     p.add_argument("--out", default=None,
                    help="Override output WAV path (default: generated/<quant>/test.wav).")
     p.add_argument("--seed", type=int, default=42)
     args = p.parse_args()
+    max_speech_tokens = args.codec_frames
 
     bb_suffix, codec_suffix = quant_suffix[args.quant]
     if codec_suffix is None:
@@ -123,7 +125,9 @@ def main():
         args.backbone = f"output/neutts_nano_{bb_suffix}_ekv2048.tflite"
     if args.codec is None:
         # Codec .tflite lives in Convert/NeuCodec/output/, not Convert/NeuTTS/output/.
-        args.codec = f"../NeuCodec/output/neucodec_decoder_f50_{codec_suffix}.tflite"
+        args.codec = (
+            f"../NeuCodec/output/neucodec_decoder_f{args.codec_frames}_{codec_suffix}.tflite"
+        )
     if args.out is None:
         args.out = f"generated/{args.quant}/test.wav"
 
@@ -189,11 +193,11 @@ def main():
             kv[k] = v
 
     # --- 6. Decode loop ---------------------------------------------
-    print(f"[6/7] Decoding (max {MAX_SPEECH_TOKENS} speech tokens)...")
+    print(f"[6/7] Decoding (max {max_speech_tokens} speech tokens)...")
     decode_runner = bb.get_signature_runner("decode")
     generated_ids = []
     pos = len(prompt_ids)  # next position to decode at
-    for step in range(MAX_SPEECH_TOKENS):
+    for step in range(max_speech_tokens):
         tok_in = np.array(
             [[generated_ids[-1] if generated_ids else prompt_ids[-1]]],
             dtype=np.int32,
@@ -212,7 +216,7 @@ def main():
         generated_ids.append(next_id)
         pos += 1
     else:
-        print(f"  hit MAX_SPEECH_TOKENS limit ({MAX_SPEECH_TOKENS})")
+        print(f"  hit max_speech_tokens limit ({max_speech_tokens})")
 
     # --- 7. Convert to FSQ codes and run codec -----------------------
     speech_codes = [tid - SPEECH_OFFSET for tid in generated_ids
@@ -222,9 +226,9 @@ def main():
         raise SystemExit("Model produced no speech codes; aborting.")
 
     # Pad to F=50
-    while len(speech_codes) < MAX_SPEECH_TOKENS:
+    while len(speech_codes) < max_speech_tokens:
         speech_codes.append(0)
-    speech_codes = speech_codes[:MAX_SPEECH_TOKENS]
+    speech_codes = speech_codes[:max_speech_tokens]
     codes_np = np.array([[speech_codes]], dtype=np.int64)
 
     print(f"[7/7] Decoding codec...")
