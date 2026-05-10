@@ -91,15 +91,40 @@ def _sample_top_k(logits: np.ndarray, k: int, temperature: float) -> int:
 
 
 def main():
+    # Map --quant to file suffixes used by the .tflite naming convention.
+    quant_suffix = {
+        "fp32": ("f32", "f32"),               # (backbone_suffix, codec_suffix)
+        "fp16": ("fp16", "fp16"),
+        "int8": ("q8", "q8"),
+        "int4": ("q4_block32", None),          # NeuCodec has no int4 variant
+    }
+
     p = argparse.ArgumentParser()
     p.add_argument("--text", required=True, help="Text to synthesize (keep short — F=50 budget).")
+    p.add_argument("--quant", choices=list(quant_suffix), default="fp32",
+                   help="Quantization tier. Selects matching backbone + codec + output subfolder.")
     p.add_argument("--voice", default="voices/jo.pt")
-    p.add_argument("--backbone", default="output/neutts_nano_q8_ekv2048.tflite")
-    p.add_argument("--codec", default="output/neucodec_decoder_f50_q8.tflite")
+    p.add_argument("--backbone", default=None,
+                   help="Override backbone .tflite path (default: derived from --quant).")
+    p.add_argument("--codec", default=None,
+                   help="Override codec .tflite path (default: derived from --quant).")
     p.add_argument("--tokenizer_dir", default="models/nano")
-    p.add_argument("--out", default="output/test.wav")
+    p.add_argument("--out", default=None,
+                   help="Override output WAV path (default: generated/<quant>/test.wav).")
     p.add_argument("--seed", type=int, default=42)
     args = p.parse_args()
+
+    bb_suffix, codec_suffix = quant_suffix[args.quant]
+    if codec_suffix is None:
+        raise SystemExit(
+            f"No NeuCodec variant exists for --quant={args.quant} (only fp32/fp16/int8)."
+        )
+    if args.backbone is None:
+        args.backbone = f"output/neutts_nano_{bb_suffix}_ekv2048.tflite"
+    if args.codec is None:
+        args.codec = f"output/neucodec_decoder_f50_{codec_suffix}.tflite"
+    if args.out is None:
+        args.out = f"generated/{args.quant}/test.wav"
 
     np.random.seed(args.seed)
 

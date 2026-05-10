@@ -5,6 +5,9 @@ models/
 output/*
 !output/.gitkeep
 
+# Generated audio from scripts/test_tts.py — re-derivable
+generated/
+
 # Python venv + caches
 .venv/
 __pycache__/
