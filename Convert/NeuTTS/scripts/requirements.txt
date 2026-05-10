@@ -46,3 +46,10 @@ tf-nightly
 
 # NeuTTS-side extras. transformers/safetensors/torch already pulled above.
 huggingface_hub>=0.20
+
+# Used by scripts/build_litertlm.py to bundle the .tflite + tokenizer +
+# chat template into a single .litertlm consumable by the LiteRT-LM C++
+# engine. Wheel only — the vendored source at LiteRT-LM/python/
+# litert_lm_builder/ needs Bazel to compile the proto/flatbuffer bindings,
+# so we use the published PyPI wheel.
+litert-lm-builder>=0.11
