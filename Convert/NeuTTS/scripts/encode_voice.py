@@ -50,7 +50,8 @@ if __name__ == "__main__":
     p.add_argument("--wav", required=True, help="Path to reference WAV (16 kHz mono recommended).")
     p.add_argument("--text", required=True, help="Path to transcript .txt file.")
     p.add_argument("--name", required=True, help="Output filename stem, e.g. 'jo' -> jo.pt.")
-    p.add_argument("--out_dir", default=str(Path(__file__).resolve().parent),
-                   help="Output directory (default: Voices/).")
+    p.add_argument("--out_dir",
+                   default=str(Path(__file__).resolve().parent.parent / "voices"),
+                   help="Output directory (default: ../voices/).")
     args = p.parse_args()
     main(args.wav, args.text, args.name, args.out_dir)
