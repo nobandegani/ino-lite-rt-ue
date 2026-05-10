@@ -122,7 +122,8 @@ def main():
     if args.backbone is None:
         args.backbone = f"output/neutts_nano_{bb_suffix}_ekv2048.tflite"
     if args.codec is None:
-        args.codec = f"output/neucodec_decoder_f50_{codec_suffix}.tflite"
+        # Codec .tflite lives in Convert/NeuCodec/output/, not Convert/NeuTTS/output/.
+        args.codec = f"../NeuCodec/output/neucodec_decoder_f50_{codec_suffix}.tflite"
     if args.out is None:
         args.out = f"generated/{args.quant}/test.wav"
 
