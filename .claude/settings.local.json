@@ -27,7 +27,19 @@
       "Bash(brew install *)",
       "Bash(bazelisk version *)",
       "Bash(./LiteRT/scripts/build-macos.sh)",
-      "Bash(tee /tmp/build-macos.log)"
+      "Bash(tee /tmp/build-macos.log)",
+      "Bash(./LiteRT/scripts/build-ios.sh --arch arm64)",
+      "Bash(tee /tmp/build-ios-arm64.log)",
+      "Bash(/Users/inoland/UE5/ino-lite-rt-ue/LiteRT/scripts/build-ios.sh --arch arm64)",
+      "Bash(/Users/inoland/UE5/ino-lite-rt-ue/LiteRT/scripts/build-ios.sh --arch sim_arm64)",
+      "Bash(tee /tmp/build-ios-sim_arm64.log)",
+      "Bash(git -c filter.lfs.required=false -c filter.lfs.smudge=cat -c filter.lfs.process= -c filter.lfs.clean=cat diff --ignore-submodules=dirty LiteRT/scripts/build-ios.sh Source/InoLiteRT/InoLiteRT.Build.cs)",
+      "Bash(git -c filter.lfs.required=false -c filter.lfs.smudge=cat -c filter.lfs.process= -c filter.lfs.clean=cat ls-files Source/ThirdParty/Win64/)",
+      "Bash(git -c filter.lfs.required=false -c filter.lfs.smudge=cat -c filter.lfs.process= -c filter.lfs.clean=cat ls-files Source/ThirdParty/Android/)",
+      "Bash(git -c filter.lfs.required=false -c filter.lfs.smudge=cat -c filter.lfs.process= -c filter.lfs.clean=cat add LiteRT/scripts/build-ios.sh Source/InoLiteRT/InoLiteRT.Build.cs)",
+      "Bash(git -c filter.lfs.required=false -c filter.lfs.smudge=cat -c filter.lfs.process= -c filter.lfs.clean=cat log --oneline -3)",
+      "Bash(git -c filter.lfs.required=false -c filter.lfs.smudge=cat -c filter.lfs.process= -c filter.lfs.clean=cat add Source/ThirdParty/Mac Source/ThirdParty/IOS)",
+      "Bash(git -c filter.lfs.required=false -c filter.lfs.smudge=cat -c filter.lfs.process= -c filter.lfs.clean=cat log --oneline -5)"
     ]
   }
 }
