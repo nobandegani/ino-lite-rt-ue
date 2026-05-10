@@ -288,23 +288,25 @@ public class InoLiteRT : ModuleRules
 				? Path.Combine(IOSBaseDir, "sim_arm64")
 				: Path.Combine(IOSBaseDir, "arm64");
 
-			// Map of framework names to ship — derived from the .dylib basenames
-			// the build script produces. iOS device + sim arm64 both ship the
-			// LiteRt + Gemma + Metal accel frameworks; the device build also
-			// ships the Metal top-K sampler (sim_arm64 prebuilt omits it).
+			// Map of framework names to ship — must match build-ios.sh's
+			// produced set. iOS gets a CPU-only build: monolithic LiteRtLm
+			// (Bazel-built, statically embeds LiteRT core) + Gemma constraint
+			// provider (prebuilt, no LiteRT dependency).
 			//
-			// IMPORTANT: order does NOT determine load sequence on iOS — dyld
-			// computes the dependency graph from each framework's LC_LOAD_DYLIB
-			// entries when the app launches. The order here only affects link
-			// order, which is irrelevant for these dylibs (none expose link-time
-			// imports we statically reference).
+			// libLiteRt + Metal accelerators are NOT shipped on iOS — see the
+			// long comment in build-ios.sh for the duplicate-symbol rationale.
+			// Metal acceleration is a follow-up that requires upstream LiteRT
+			// BUILD changes.
+			//
+			// Order does NOT determine load sequence on iOS — dyld computes
+			// the dependency graph from each framework's LC_LOAD_DYLIB entries
+			// at app launch. The order here only affects link order, which is
+			// irrelevant for these dylibs (none expose link-time imports we
+			// statically reference).
 			string[] IOSFrameworks = new string[]
 			{
-				"LiteRt",                       // LiteRT core (libLiteRt.dylib wrapped)
-				"LiteRtLm",                     // our Bazel-built LLM runtime
-				"GemmaModelConstraintProvider", // constrained decoding (prebuilt)
-				"LiteRtMetalAccelerator",       // Metal GPU backend (prebuilt)
-				"LiteRtTopKMetalSampler",       // Metal top-K sampler (prebuilt; device-only)
+				"LiteRtLm",                     // monolithic Bazel build (statically embeds LiteRT)
+				"GemmaModelConstraintProvider", // constrained decoding (prebuilt, LiteRT-independent)
 			};
 
 			foreach (string FwName in IOSFrameworks)

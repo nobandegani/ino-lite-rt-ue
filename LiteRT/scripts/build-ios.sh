@@ -114,6 +114,54 @@ fi
 "${SCRIPT_DIR}/setup.sh"
 
 #---------------------------------------------------------------------
+# 1b. Patch upstream .bazelrc — remove the stale -fembed-bitcode flag
+#---------------------------------------------------------------------
+# Upstream's vendor/LiteRT-LM/.bazelrc has:
+#     build:ios --copt=-fembed-bitcode
+# which is a leftover from the pre-Xcode-14 days when Apple still
+# required bitcode for App Store. Apple deprecated bitcode in Xcode
+# 14 (Sep 2022) and removed the requirement entirely. The flag is
+# now actively harmful: it gets applied as a global --copt to every
+# C++ compile in the build (including host x86_64 macOS tool builds),
+# and clang errors out when host targets like XNNPACK's SSE
+# microkernels combine it with their architecture-specific flags
+# (-mstack-alignment=16, -mstackrealign):
+#
+#     clang: error: -mstack-alignment= is not supported with -fembed-bitcode
+#     clang: error: -mstackrealign is not supported with -fembed-bitcode
+#
+# Fix: comment out the line in the local copy of upstream's .bazelrc.
+# This is the simplest, most-reliable approach — last-wins --copt
+# overrides on the bazelisk command line are fragile across clang
+# versions because -fembed-bitcode-marker still triggers the same
+# rejection, and -fembed-bitcode=off is not universally supported.
+#
+# The patch is idempotent (grep guard) and the .bazelrc is added to
+# the submodule's .git/info/exclude so it doesn't appear dirty in
+# parent-repo git status with --ignore-submodules=dirty.
+BAZELRC_FILE="${LITERT_LM_SUBDIR}/.bazelrc"
+if grep -qE '^build:ios --copt=-fembed-bitcode$' "${BAZELRC_FILE}"; then
+    # macOS sed needs '' as the in-place backup suffix (no GNU sed semantics).
+    sed -i '' 's|^build:ios --copt=-fembed-bitcode$|# REMOVED BY InoLiteRT build-ios.sh: stale, conflicts with host XNNPACK x86_64 SSE flags. See build-ios.sh comments.\n# &|' "${BAZELRC_FILE}"
+    echo -e "${YELLOW}[PATCH] Commented out stale 'build:ios --copt=-fembed-bitcode' in ${BAZELRC_FILE}${RESET}"
+
+    # Add /.bazelrc to the submodule's exclude file so the modification
+    # doesn't surface as a dirty file in parent-repo git status. The
+    # exclude file already contains overlay top-paths + bazel-* + user
+    # bazelrcs (set up by setup.sh).
+    submodule_git_dir="$(git -C "${LITERT_LM_SUBDIR}" rev-parse --absolute-git-dir 2>/dev/null || true)"
+    if [[ -n "${submodule_git_dir}" ]]; then
+        exclude_file="${submodule_git_dir}/info/exclude"
+        if [[ -f "${exclude_file}" ]] && ! grep -Fxq "/.bazelrc" "${exclude_file}"; then
+            echo "/.bazelrc" >> "${exclude_file}"
+            echo "  [ADD] /.bazelrc to submodule's .git/info/exclude"
+        fi
+    fi
+else
+    echo -e "${YELLOW}[PATCH] .bazelrc already patched (or upstream no longer has the offending line)${RESET}"
+fi
+
+#---------------------------------------------------------------------
 # 2. Bazel build LiteRT-LM (//ino:LiteRtLm)
 #---------------------------------------------------------------------
 # iOS configs from upstream's .bazelrc:
@@ -131,10 +179,34 @@ fi
 #   build:ios_sim_arm64  inherits ios + --cpu=ios_sim_arm64
 #                        --platforms=@build_bazel_apple_support//platforms:ios_sim_arm64
 #
-# Both --define=litert_link_capi_so=true and --define=resolve_symbols_in_exec=false
-# are passed for parity with the Win64 / macOS dynamic-linking pattern: our
-# LiteRtLm.dylib imports from libLiteRt.dylib at runtime, sharing one
-# LiteRT instance with the prebuilt accelerator dylibs.
+# IMPORTANT: --define=litert_link_capi_so=true is INTENTIONALLY OMITTED on
+# iOS — different from Win64 / macOS, same as upstream's own iOS CI in
+# .github/workflows/ci-build-mac.yml.
+#
+# Why: with --define=litert_link_capi_so=true the LiteRT op_options library
+# gets split into two variants (dynamic_runtime/liblitert_op_options.a and
+# internal/liblitert_op_options.a) that are meant to land in different
+# binaries (the dynamic_runtime/ variant in libLiteRt.dylib, the internal/
+# variant in LiteRtLm.dylib). On macOS this works because the build:macos
+# config uses --linkopt=-Wl,-undefined,dynamic_lookup, which defers symbol
+# resolution to runtime so dyld can pick the right copy. iOS does NOT
+# support dynamic_lookup (App Store validation rejects it), so the cc_binary
+# linkshared=1 step ends up statically linking BOTH variants into
+# LiteRtLm.dylib — producing 193+ duplicate-symbol link errors:
+#
+#     duplicate symbol 'litert::FullyConnectedOptions::InitFromOp(...)' in:
+#         dynamic_runtime/liblitert_op_options.a
+#         internal/liblitert_op_options.a
+#     ld: 193 duplicate symbols
+#
+# Without --define=litert_link_capi_so=true the build is monolithic:
+# everything (LiteRT core + LiteRT-LM) statically links into one
+# libLiteRtLm.dylib. The prebuilt libLiteRt.dylib + Metal/WebGPU
+# accelerators are NOT shipped on iOS in this configuration — they assume
+# the dynamic-split runtime layout and would conflict with our statically-
+# embedded copy. iOS gets CPU-only inference. Metal acceleration is a
+# follow-up that needs upstream LiteRT BUILD changes to deduplicate the
+# .a file paths.
 #
 # Per-arch disk + output base — separate from macOS's so the two builds don't
 # thrash each other's caches:
@@ -168,8 +240,6 @@ export ANDROID_NDK_HOME
         --config="${BAZEL_CONFIG}" \
         --disk_cache="${BAZEL_DISK_CACHE}" \
         --build_tag_filters=-requires-mac-inputs:hard,-no_mac \
-        --define=litert_link_capi_so=true \
-        --define=resolve_symbols_in_exec=false \
         --verbose_failures
 )
 
@@ -222,16 +292,34 @@ echo "  [STAGE] libLiteRtLm.dylib (from $(basename "${so_src}")) -> tmp"
 #---------------------------------------------------------------------
 # 3b. Upstream prebuilt dylibs from prebuilt/ios_<arch>/
 #---------------------------------------------------------------------
-# Note iOS device and simulator have different prebuilt sets:
-#   ios_arm64/      libLiteRt.dylib + Metal accel + Metal top-K + Gemma
-#   ios_sim_arm64/  libLiteRt.dylib + Metal accel + Gemma  (no top-K Metal)
-# WebGPU prebuilts are NOT shipped on iOS — Apple platforms use Metal directly.
+# Restricted set on iOS — see the long comment in step 2. Without
+# --define=litert_link_capi_so=true, our libLiteRtLm.dylib statically
+# embeds LiteRT, so shipping the prebuilt libLiteRt.dylib alongside would
+# put two copies of LiteRT in process memory at runtime (state divergence,
+# wasted RAM). Same reasoning excludes the Metal accelerator + top-K
+# sampler prebuilts: they were built with the dynamic-split runtime layout
+# and would dlopen libLiteRt.dylib expecting the dynamic version's
+# in-process state, conflicting with our statically-embedded copy.
+#
+# Only libGemmaModelConstraintProvider.dylib is shipped — Gemma's
+# constrained decoding logic doesn't reach into LiteRT's tensor APIs and
+# is safe to load alongside a statically-linked LiteRtLm.dylib. (Verified
+# via otool -L: libGemmaModelConstraintProvider has no LC_LOAD_DYLIB
+# entries pointing at libLiteRt.dylib.)
+#
+# WebGPU prebuilts are NOT shipped on iOS regardless — Apple platforms
+# use Metal directly, no Dawn/WebGPU layer.
+#
+# Net iOS framework set:
+#   LiteRtLm.framework               (Bazel-built, monolithic)
+#   GemmaModelConstraintProvider.framework  (prebuilt, Gemma-specific)
+#
+# Metal acceleration on iOS is a follow-up: needs upstream LiteRT BUILD
+# changes to deduplicate dynamic_runtime/ vs internal/ .a files so
+# litert_link_capi_so=true can succeed on iOS.
 IOS_PREBUILT_DIR="${LITERT_LM_SUBDIR}/prebuilt/${PREBUILT_SUBDIR}"
 IOS_PREBUILTS=(
-    "libLiteRt.dylib"
     "libGemmaModelConstraintProvider.dylib"
-    "libLiteRtMetalAccelerator.dylib"
-    "libLiteRtTopKMetalSampler.dylib"
 )
 for dylib in "${IOS_PREBUILTS[@]}"; do
     src="${IOS_PREBUILT_DIR}/${dylib}"
@@ -239,9 +327,7 @@ for dylib in "${IOS_PREBUILTS[@]}"; do
         cp -f "${src}" "${TMP_STAGE}/${dylib}"
         echo "  [STAGE] ${dylib} (prebuilt) -> tmp"
     else
-        # ios_sim_arm64 legitimately omits libLiteRtTopKMetalSampler — log
-        # info, not warning, since it's not an error.
-        echo "  [SKIP]  ${dylib} (not present in ${PREBUILT_SUBDIR}/, expected for some sim builds)"
+        echo "  [SKIP]  ${dylib} (not present in ${PREBUILT_SUBDIR}/)"
     fi
 done
 
