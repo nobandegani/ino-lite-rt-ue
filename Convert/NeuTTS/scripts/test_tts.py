@@ -239,10 +239,15 @@ def main():
     if not speech_codes:
         raise SystemExit("Model produced no speech codes; aborting.")
 
-    # Codec graph has a fixed F. Pad the codes vector to that length;
-    # we'll trim the codec's audio output to discard the padding's noise.
+    # Codec graph has a fixed F. We pad the codes vector to that length
+    # with the LAST real code repeated (not 0) — code 0 decodes to
+    # something arbitrary and creates an abrupt boundary that the codec's
+    # STFT overlap-add smears into the last frame of real audio as noise.
+    # Repeating the last code gives a sustained continuation that is then
+    # cleanly trimmed below.
     n_real = len(speech_codes)
-    padded = speech_codes + [0] * (max_speech_tokens - n_real)
+    last_code = speech_codes[-1] if n_real > 0 else 0
+    padded = speech_codes + [last_code] * (max_speech_tokens - n_real)
     padded = padded[:max_speech_tokens]
     codes_np = np.array([[padded]], dtype=np.int64)
 
@@ -255,10 +260,13 @@ def main():
     audio = codec_runner(codes=codes_np)
     audio_wave = list(audio.values())[0][0, 0, :]
 
-    # Trim to the real-codes audio length: 480 samples per FSQ frame (24 kHz
-    # / 50 Hz codes). Anything beyond is the codec hallucinating audio for
-    # our zero-padding — drop it.
-    trim = min(len(audio_wave), n_real * 480)
+    # Trim to roughly n_real * 480 samples, but back off ~2 frames to
+    # avoid the codec's STFT overlap-add smearing the padding boundary
+    # into the last frame of real audio. n_fft=1920 hop=480 means each
+    # output sample is influenced by frames within ±2 frames of its
+    # position, so the safe end is (n_real - 2) * 480.
+    safe_end = max(0, (n_real - 2) * 480)
+    trim = min(len(audio_wave), safe_end) if n_real > 2 else min(len(audio_wave), n_real * 480)
     audio_wave = audio_wave[:trim]
     print(f"  trimmed to {trim} samples ({trim/SAMPLE_RATE:.2f} s real audio)")
 
