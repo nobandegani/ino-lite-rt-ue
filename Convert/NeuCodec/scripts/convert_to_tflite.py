@@ -66,28 +66,28 @@ _BATCH_SIZE = flags.DEFINE_integer(
 _QUANTIZE = flags.DEFINE_enum(
     "quantize",
     "none",
-    [
-        "none",
-        "fp16",
-        "dynamic_int8",
-        "dynamic_int4_block32",
-        "dynamic_int4_channelwise",
-    ],
+    ["none", "fp16", "dynamic_int8", "dynamic_int4_block32"],
     "Quantization mode. The recipes come from"
     " litert_torch.generative.quantize.quant_recipes — they're written"
     " for the generative API but work on any litert_torch.convert"
     " model when called with mcfg=None (recipe.verify() does not"
     " require a ModelConfig). Modes:\n"
-    "  none                      - fp32 weights\n"
-    "  fp16                      - fp16 weights\n"
-    "  dynamic_int8              - int8 weights, dynamic activation\n"
-    "  dynamic_int4_block32      - int4 weights, blockwise-32"
-    " granularity (best int4 quality, but requires every quantized"
-    " dim to be divisible by 32 — fails on NeuCodec's 65536x8 FSQ"
-    " codebook)\n"
-    "  dynamic_int4_channelwise  - int4 weights, channelwise"
-    " granularity (one scale per output channel, no divisibility"
-    " constraint — use this for NeuCodec int4)",
+    "  none                  - fp32 weights\n"
+    "  fp16                  - fp16 weights\n"
+    "  dynamic_int8          - int8 weights, dynamic activation"
+    " (channelwise — fine for NeuCodec)\n"
+    "  dynamic_int4_block32  - int4 weights, blockwise-32\n"
+    "\n"
+    "WARNING: dynamic_int4_block32 currently FAILS on NeuCodec because"
+    " the FSQ codebook tensor is shape (65536, 8) and the inner dim 8"
+    " is not divisible by 32. Per"
+    " litert_torch/generative/quantize/supported_schemes.py the only"
+    " supported int4 granularities are BLOCKWISE_{32,64,128,256} —"
+    " channelwise int4 is not in the matrix. There is no working int4"
+    " path for NeuCodec without either reshaping the codebook"
+    " (architectural change) or using a per-layer recipe that excludes"
+    " the codebook from int4 (not yet implemented here). Use fp16 or"
+    " dynamic_int8 instead for mobile builds.",
 )
 
 # Output filename suffix per quantize mode (matches litert-torch's
@@ -97,7 +97,6 @@ _QUANT_SUFFIX = {
     "fp16": "fp16",
     "dynamic_int8": "q8",
     "dynamic_int4_block32": "q4_block32",
-    "dynamic_int4_channelwise": "q4_channelwise",
 }
 
 
@@ -113,11 +112,6 @@ def _make_quant_config(quantize: str):
     return quant_recipes.full_dynamic_recipe(
         weight_dtype=quant_attrs.Dtype.INT4,
         granularity=quant_attrs.Granularity.BLOCKWISE_32,
-    )
-  if quantize == "dynamic_int4_channelwise":
-    return quant_recipes.full_dynamic_recipe(
-        weight_dtype=quant_attrs.Dtype.INT4,
-        granularity=quant_attrs.Granularity.CHANNELWISE,
     )
   raise ValueError(f"Unknown --quantize mode: {quantize!r}")
 

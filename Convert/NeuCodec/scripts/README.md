@@ -86,15 +86,33 @@ quantizes, and writes the `.tflite`.
 
 ### Quantization (`--quantize`)
 
-| Mode                  | File suffix     | Size (F=50) |
-|-----------------------|----------------|-------------|
-| `none` (default)       | `_f32`         | ~730 MB     |
-| `fp16`                 | `_fp16`        | ~370 MB     |
-| `dynamic_int8`         | `_q8`          | ~190 MB     |
-| `dynamic_int4_block32` | `_q4_block32`  | ~100 MB     |
+| Mode                   | File suffix    | Size (F=50) | Works? |
+|------------------------|----------------|-------------|--------|
+| `none` (default)        | `_f32`         | 733 MB      | ✓ |
+| `fp16`                  | `_fp16`        | 367 MB      | ✓ |
+| `dynamic_int8`          | `_q8`          | 187 MB      | ✓ |
+| `dynamic_int4_block32`  | `_q4_block32`  | —           | ✗ (see below) |
 
 `--output_path` defaults to `output/neucodec_decoder_f{F}_{suffix}.tflite`
 so you can run multiple `--quantize` values without overwriting.
+
+**Note on int4**: `dynamic_int4_block32` fails on NeuCodec because the
+FSQ codebook tensor is shape `(65536, 8)` and inner dim 8 doesn't
+divide block size 32:
+
+```
+ValueError: Quantized dimension 8 in tensor shape (65536, 8) is not
+divisible by block size 32.
+```
+
+Per `litert_torch/generative/quantize/supported_schemes.py`, the only
+supported int4 granularities are `BLOCKWISE_{32,64,128,256}` —
+channelwise int4 is **not** in the supported recipe matrix at all.
+None of {32, 64, 128, 256} divides 8, so there's no usable int4 path
+for the codebook without either reshaping the FSQ output (architectural
+change) or building a per-layer recipe that quantizes the codebook
+separately. For mobile, **use `fp16` or `dynamic_int8`** — `_q8` at
+187 MB is the practical small-footprint pick.
 
 ### Choosing `--num_frames`
 
