@@ -61,6 +61,9 @@ def main():
         backbone_device="cpu",
         codec_repo=args.codec_repo,
         codec_device="cpu",
+        # Required when backbone_repo isn't in BACKBONE_LANGUAGE_MAP (e.g. a
+        # local path like "models/nano" instead of "neuphonic/neutts-nano").
+        language="en-us",
     )
 
     print(f"[2/3] Encoding reference voice from {args.ref_wav}...")
