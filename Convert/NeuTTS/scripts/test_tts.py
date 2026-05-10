@@ -50,6 +50,9 @@ SPEECH_OFFSET = 128262          # <|speech_0|> starts here
 SPEECH_END = 128261             # <|SPEECH_GENERATION_END|>
 TOP_K = 50
 TEMPERATURE = 1.0
+MIN_NEW_TOKENS = 50             # Match NeuTTS's _infer_torch — don't let the
+                                # model emit EOS in the first 50 steps. Without
+                                # this short utterances cut off after ~0.5 s.
 NUM_LAYERS = 24
 NUM_KV_HEADS = 3
 HEAD_DIM = 64
@@ -211,7 +214,11 @@ def main():
         )
         pos_in = np.array([pos], dtype=np.int32)
         out = decode_runner(tokens=tok_in, input_pos=pos_in, **kv)
-        logits = out["logits"][0, 0, :]
+        logits = out["logits"][0, 0, :].copy()
+        # Block EOS for the first MIN_NEW_TOKENS steps so short utterances
+        # don't get cut off mid-word.
+        if step < MIN_NEW_TOKENS:
+            logits[SPEECH_END] = -1e9
         next_id = _sample_top_k(logits, TOP_K, TEMPERATURE)
         # Carry forward KV
         for k, v in out.items():
