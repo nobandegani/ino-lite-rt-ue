@@ -74,16 +74,27 @@ Adds: `vector-quantize-pytorch==1.17.8`, `torchtune>=0.3.1`,
 ## Convert to `.tflite`
 
 ```bash
-python -m scripts.convert_to_tflite \
-    --output_path=output/neucodec_decoder.tflite \
-    --num_frames=50
+python -m scripts.convert_to_tflite --num_frames=50 --quantize=fp16
+# Produces output/neucodec_decoder_f50_fp16.tflite
 ```
 
 This downloads the full NeuCodec checkpoint from HF on first run
 (`huggingface.co/neuphonic/neucodec`, ~1 GB to the HF cache, NOT to
 this repo), swaps the ISTFT head and FSQ quantizer for the
-TFLite-friendly variants, traces the decoder forward, and writes
-the `.tflite`.
+TFLite-friendly variants, traces the decoder forward, optionally
+quantizes, and writes the `.tflite`.
+
+### Quantization (`--quantize`)
+
+| Mode                  | File suffix     | Size (F=50) |
+|-----------------------|----------------|-------------|
+| `none` (default)       | `_f32`         | ~730 MB     |
+| `fp16`                 | `_fp16`        | ~370 MB     |
+| `dynamic_int8`         | `_q8`          | ~190 MB     |
+| `dynamic_int4_block32` | `_q4_block32`  | ~100 MB     |
+
+`--output_path` defaults to `output/neucodec_decoder_f{F}_{suffix}.tflite`
+so you can run multiple `--quantize` values without overwriting.
 
 ### Choosing `--num_frames`
 
