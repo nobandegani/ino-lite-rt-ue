@@ -66,17 +66,28 @@ _BATCH_SIZE = flags.DEFINE_integer(
 _QUANTIZE = flags.DEFINE_enum(
     "quantize",
     "none",
-    ["none", "fp16", "dynamic_int8", "dynamic_int4_block32"],
+    [
+        "none",
+        "fp16",
+        "dynamic_int8",
+        "dynamic_int4_block32",
+        "dynamic_int4_channelwise",
+    ],
     "Quantization mode. The recipes come from"
     " litert_torch.generative.quantize.quant_recipes — they're written"
     " for the generative API but work on any litert_torch.convert"
     " model when called with mcfg=None (recipe.verify() does not"
     " require a ModelConfig). Modes:\n"
-    "  none                   - fp32 weights\n"
-    "  fp16                   - fp16 weights\n"
-    "  dynamic_int8           - int8 weights, dynamic activation\n"
-    "  dynamic_int4_block32   - int4 weights, blockwise-32"
-    " granularity (best int4 quality)",
+    "  none                      - fp32 weights\n"
+    "  fp16                      - fp16 weights\n"
+    "  dynamic_int8              - int8 weights, dynamic activation\n"
+    "  dynamic_int4_block32      - int4 weights, blockwise-32"
+    " granularity (best int4 quality, but requires every quantized"
+    " dim to be divisible by 32 — fails on NeuCodec's 65536x8 FSQ"
+    " codebook)\n"
+    "  dynamic_int4_channelwise  - int4 weights, channelwise"
+    " granularity (one scale per output channel, no divisibility"
+    " constraint — use this for NeuCodec int4)",
 )
 
 # Output filename suffix per quantize mode (matches litert-torch's
@@ -86,6 +97,7 @@ _QUANT_SUFFIX = {
     "fp16": "fp16",
     "dynamic_int8": "q8",
     "dynamic_int4_block32": "q4_block32",
+    "dynamic_int4_channelwise": "q4_channelwise",
 }
 
 
@@ -101,6 +113,11 @@ def _make_quant_config(quantize: str):
     return quant_recipes.full_dynamic_recipe(
         weight_dtype=quant_attrs.Dtype.INT4,
         granularity=quant_attrs.Granularity.BLOCKWISE_32,
+    )
+  if quantize == "dynamic_int4_channelwise":
+    return quant_recipes.full_dynamic_recipe(
+        weight_dtype=quant_attrs.Dtype.INT4,
+        granularity=quant_attrs.Granularity.CHANNELWISE,
     )
   raise ValueError(f"Unknown --quantize mode: {quantize!r}")
 
