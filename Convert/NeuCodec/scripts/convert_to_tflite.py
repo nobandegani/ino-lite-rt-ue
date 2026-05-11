@@ -35,6 +35,7 @@ from absl import app, flags
 import torch
 
 import litert_torch
+from litert_torch._convert.interface import Converter
 from litert_torch.generative.quantize import quant_attrs, quant_recipes
 
 from . import neucodec_decoder
@@ -158,7 +159,7 @@ def main(_):
   # Build the converter and register one signature per F. Weights are
   # shared across signatures in the resulting .tflite — only the graph
   # topology (input shape) differs per signature.
-  converter_obj = litert_torch.Converter()
+  converter_obj = Converter()
   for f in frames_list:
     sample = neucodec_decoder.get_sample_codes(
         num_frames=f, batch_size=_BATCH_SIZE.value,
