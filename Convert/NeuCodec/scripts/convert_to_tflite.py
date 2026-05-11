@@ -51,12 +51,14 @@ _REPO_ID = flags.DEFINE_string(
     "neuphonic/neucodec",
     "HuggingFace repo with the full NeuCodec checkpoint to load.",
 )
-_NUM_FRAMES = flags.DEFINE_integer(
+_NUM_FRAMES = flags.DEFINE_multi_integer(
     "num_frames",
-    50,
-    "Code-sequence length F to bake into the exported .tflite. Output"
-    " audio length is (num_frames - 1) * 480 samples (24 kHz; trim of"
-    " n_fft/2 each edge). Max is 6000 (OnnxISTFTHead.MAX_FRAMES).",
+    [100, 200, 400, 600, 1000],
+    "Code-sequence length F to bake into the .tflite as a signature."
+    " Pass this flag multiple times to produce a multi-signature .tflite"
+    " (e.g. --num_frames=100 --num_frames=200). Each signature is named"
+    " f<N>. Output audio length is (N - 1) * 480 samples (24 kHz, with"
+    " n_fft/2 trim each edge). Max is 6000 (OnnxISTFTHead.MAX_FRAMES).",
 )
 _BATCH_SIZE = flags.DEFINE_integer(
     "batch_size",
@@ -117,56 +119,66 @@ def _make_quant_config(quantize: str):
 
 
 def main(_):
-  if _NUM_FRAMES.value > 6000:
-    raise ValueError(
-        f"--num_frames={_NUM_FRAMES.value} exceeds OnnxISTFTHead.MAX_FRAMES"
-        " = 6000 — see vendor/neucodec/onnx/onnx_ops.py."
-    )
+  frames_list = sorted(set(_NUM_FRAMES.value))
+  for f in frames_list:
+    if f > 6000:
+      raise ValueError(
+          f"--num_frames={f} exceeds OnnxISTFTHead.MAX_FRAMES = 6000"
+          " — see vendor/neucodec/onnx/onnx_ops.py."
+      )
 
-  # Resolve output path. Empty default -> auto-name from frames + quantize.
+  # Resolve output path. Empty default -> auto-name from quantize only
+  # (no F in the name since the file has multiple F buckets baked in).
   out_path = _OUTPUT_PATH.value
   if not out_path:
     suffix = _QUANT_SUFFIX[_QUANTIZE.value]
-    out_path = f"output/neucodec_decoder_f{_NUM_FRAMES.value}_{suffix}.tflite"
+    out_path = f"output/neucodec_decoder_{suffix}.tflite"
   os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
 
   print(f"Building decoder (repo={_REPO_ID.value}) ...")
   decoder = neucodec_decoder.build_decoder(repo_id=_REPO_ID.value)
 
-  sample_codes = neucodec_decoder.get_sample_codes(
-      num_frames=_NUM_FRAMES.value,
-      batch_size=_BATCH_SIZE.value,
-  )
-  print(
-      f"Sample input: shape={tuple(sample_codes.shape)},"
-      f" dtype={sample_codes.dtype}"
-  )
+  print(f"Will export {len(frames_list)} signature(s): "
+        f"{[f'f{f}' for f in frames_list]}")
 
-  # Quick PyTorch sanity check before the long conversion — ensures the
-  # swaps + weight loads + wrapper are all consistent.
-  print("PyTorch sanity forward (decoder.eval()) ...")
-  with torch.no_grad():
-    py_out = decoder(sample_codes)
-  expected_samples = (_NUM_FRAMES.value - 1) * 480
-  print(
-      f"  -> output shape={tuple(py_out.shape)}, dtype={py_out.dtype}"
-      f" (expected [{_BATCH_SIZE.value}, 1, {expected_samples}])"
+  # Quick PyTorch sanity check on the smallest bucket before the long
+  # conversion — ensures the swaps + weight loads + wrapper are all
+  # consistent.
+  smallest = frames_list[0]
+  sample_codes_smallest = neucodec_decoder.get_sample_codes(
+      num_frames=smallest, batch_size=_BATCH_SIZE.value,
   )
+  print(f"\nPyTorch sanity forward at F={smallest} ...")
+  with torch.no_grad():
+    py_out = decoder(sample_codes_smallest)
+  expected = (smallest - 1) * 480
+  print(f"  -> output shape={tuple(py_out.shape)}, dtype={py_out.dtype}"
+        f" (expected [{_BATCH_SIZE.value}, 1, {expected}])")
+
+  # Build the converter and register one signature per F. Weights are
+  # shared across signatures in the resulting .tflite — only the graph
+  # topology (input shape) differs per signature.
+  converter_obj = litert_torch.Converter()
+  for f in frames_list:
+    sample = neucodec_decoder.get_sample_codes(
+        num_frames=f, batch_size=_BATCH_SIZE.value,
+    )
+    sig_name = f"f{f}"
+    print(f"  registering signature `{sig_name}` (codes shape={tuple(sample.shape)})")
+    converter_obj.add_signature(
+        sig_name, decoder, sample_kwargs={"codes": sample},
+    )
 
   quant_config = _make_quant_config(_QUANTIZE.value)
-  print(f"\nConverting to .tflite via litert_torch.convert(...) "
-        f"with quantize={_QUANTIZE.value!r} ...")
-  edge_model = litert_torch.convert(
-      decoder,
-      sample_kwargs={"codes": sample_codes},
-      quant_config=quant_config,
-  )
+  print(f"\nConverting (quantize={_QUANTIZE.value!r}) ...")
+  edge_model = converter_obj.convert(quant_config=quant_config)
 
   print(f"Writing {out_path} ...")
   edge_model.export(out_path)
 
   size_mb = os.path.getsize(out_path) / (1024 * 1024)
-  print(f"Done. Wrote {out_path} ({size_mb:.1f} MB).")
+  print(f"Done. Wrote {out_path} ({size_mb:.1f} MB,"
+        f" signatures: {[f'f{f}' for f in frames_list]}).")
 
 
 if __name__ == "__main__":

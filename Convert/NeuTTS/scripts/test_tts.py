@@ -105,8 +105,9 @@ def main():
     p.add_argument("--text", required=True, help="Text to synthesize.")
     p.add_argument("--quant", choices=list(quant_suffix), default="fp32",
                    help="Quantization tier. Selects matching backbone + codec + output subfolder.")
-    p.add_argument("--codec_frames", type=int, default=200,
-                   help="Codec F bucket to use (must match a converted .tflite — default 200).")
+    p.add_argument("--codec_frames", type=int, default=None,
+                   help="Force a specific codec F bucket. Default: pick the"
+                        " smallest bucket >= number of generated codes.")
     p.add_argument("--voice", default="voices/jo.pt")
     p.add_argument("--backbone", default=None,
                    help="Override backbone .tflite path (default: derived from --quant).")
@@ -117,7 +118,6 @@ def main():
                    help="Override output WAV path (default: generated/<quant>/<text>.wav).")
     p.add_argument("--seed", type=int, default=42)
     args = p.parse_args()
-    max_speech_tokens = args.codec_frames
 
     bb_suffix, codec_suffix = quant_suffix[args.quant]
     if codec_suffix is None:
@@ -127,10 +127,9 @@ def main():
     if args.backbone is None:
         args.backbone = f"output/neutts_nano_{bb_suffix}_ekv2048.tflite"
     if args.codec is None:
-        # Codec .tflite lives in Convert/NeuCodec/output/, not Convert/NeuTTS/output/.
-        args.codec = (
-            f"../NeuCodec/output/neucodec_decoder_f{args.codec_frames}_{codec_suffix}.tflite"
-        )
+        # Codec .tflite is multi-signature now (one file per quant tier,
+        # multiple F buckets as signatures named f100/f200/f400/f600/f1000).
+        args.codec = f"../NeuCodec/output/neucodec_decoder_{codec_suffix}.tflite"
     if args.out is None:
         # Sanitize input text into a filename stem: lowercase, alnum + spaces only,
         # spaces -> underscores. e.g. "How are you?" -> "how_are_you".
@@ -202,8 +201,22 @@ def main():
         if k.startswith(("kv_cache_k_", "kv_cache_v_")):
             kv[k] = v
 
+    # Inspect codec early so we know the available F buckets and the
+    # largest one (= cap for the decode loop).
+    print(f"[6/7] Loading codec {Path(args.codec).name}...")
+    codec = litert_interpreter.Interpreter(model_path=args.codec)
+    codec.allocate_tensors()
+    codec_sigs = list(codec.get_signature_list().keys())
+    # Signatures are named f<N> (e.g. f100, f200). Parse out the buckets.
+    buckets = sorted(int(s[1:]) for s in codec_sigs
+                     if s.startswith("f") and s[1:].isdigit())
+    if not buckets:
+        raise SystemExit(f"Codec {args.codec} has no f<N> signatures: {codec_sigs}")
+    print(f"  codec buckets: {buckets}")
+    max_speech_tokens = args.codec_frames if args.codec_frames is not None else buckets[-1]
+
     # --- 6. Decode loop ---------------------------------------------
-    print(f"[6/7] Decoding (max {max_speech_tokens} speech tokens)...")
+    print(f"  decoding (max {max_speech_tokens} speech tokens)...")
     decode_runner = bb.get_signature_runner("decode")
     generated_ids = []
     pos = len(prompt_ids)  # next position to decode at
@@ -235,30 +248,31 @@ def main():
     # --- 7. Convert to FSQ codes and run codec -----------------------
     speech_codes = [tid - SPEECH_OFFSET for tid in generated_ids
                     if SPEECH_OFFSET <= tid < SPEECH_OFFSET + 65536]
-    print(f"  generated {len(speech_codes)} valid speech codes")
+    n_real = len(speech_codes)
+    print(f"  generated {n_real} valid speech codes")
     if not speech_codes:
         raise SystemExit("Model produced no speech codes; aborting.")
 
-    # Codec graph has a fixed F. We pad the codes vector to that length
-    # with the LAST real code repeated (not 0) — code 0 decodes to
-    # something arbitrary and creates an abrupt boundary that the codec's
-    # STFT overlap-add smears into the last frame of real audio as noise.
-    # Repeating the last code gives a sustained continuation that is then
-    # cleanly trimmed below.
-    n_real = len(speech_codes)
+    # Pick the smallest bucket >= n_real. If n_real exceeds the largest
+    # bucket, fall back to the largest (we'll lose some tail audio).
+    chosen_bucket = next((b for b in buckets if b >= n_real), buckets[-1])
+    if n_real > chosen_bucket:
+        print(f"  WARNING: n_real={n_real} exceeds largest bucket {chosen_bucket}; truncating.")
+    print(f"[7/7] Decoding codec with signature f{chosen_bucket}...")
+
+    # Pad to chosen_bucket with the LAST real code repeated (not 0). Code
+    # 0 decodes to something arbitrary; repeating the last code gives a
+    # sustained continuation that trims cleanly below.
     last_code = speech_codes[-1] if n_real > 0 else 0
-    padded = speech_codes + [last_code] * (max_speech_tokens - n_real)
-    padded = padded[:max_speech_tokens]
+    padded = speech_codes[:chosen_bucket] + [last_code] * (chosen_bucket - min(n_real, chosen_bucket))
+    padded = padded[:chosen_bucket]
     codes_np = np.array([[padded]], dtype=np.int64)
 
-    print(f"[7/7] Decoding codec...")
-    codec = litert_interpreter.Interpreter(model_path=args.codec)
-    codec.allocate_tensors()
-    codec_runner = codec.get_signature_runner(
-        list(codec.get_signature_list().keys())[0]
-    )
+    codec_runner = codec.get_signature_runner(f"f{chosen_bucket}")
     audio = codec_runner(codes=codes_np)
     audio_wave = list(audio.values())[0][0, 0, :]
+    # Set max_speech_tokens for the trim formula below.
+    max_speech_tokens = chosen_bucket
 
     # Trim to roughly n_real * 480 samples, but back off ~2 frames to
     # avoid the codec's STFT overlap-add smearing the padding boundary
