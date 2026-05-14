@@ -93,9 +93,18 @@ def _build_llm_metadata_pb(out_path: Path) -> Path:
   meta.prompt_templates.user.prefix = _USER_PREFIX
   meta.prompt_templates.user.suffix = _USER_SUFFIX
 
-  # Sampler defaults — match `_infer_ggml` in neutts.py:374-380.
-  meta.sampler_params.type = sampler_params_pb2.SamplerParameters.TOP_K
+  # Sampler defaults — NeuTTS uses top_k=50 + temperature=1.0
+  # (vendor/neutts/neutts/neutts.py:354-358), but LiteRT-LM's basic CPU
+  # sampler factory only implements TOP_P, not TOP_K (returns
+  # UnimplementedError("Sampler type: 1 not implemented yet.") from
+  # runtime/components/sampler_factory.cc:579-595, which propagates up
+  # and makes `litert_lm_engine_create_session` return NULL). TopPSampler
+  # accepts BOTH a top-k cap and a top-p threshold, so we use TOP_P with
+  # k=50 (matching NeuTTS) and p=0.95 (effectively un-restrictive once
+  # top_k=50 has already culled the distribution).
+  meta.sampler_params.type = sampler_params_pb2.SamplerParameters.TOP_P
   meta.sampler_params.k = 50
+  meta.sampler_params.p = 0.95
   meta.sampler_params.temperature = 1.0
 
   # Total prompt + generation length cap (NeuTTS's `max_context`).
