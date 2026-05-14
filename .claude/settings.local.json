@@ -52,7 +52,16 @@
       "Bash(git -C /Users/inoland/UE5/ino-lite-rt-ue -c filter.lfs.required=false -c filter.lfs.smudge=cat -c filter.lfs.process= -c filter.lfs.clean=cat add LiteRT/vendor/LiteRT-LM)",
       "Bash(git -C /Users/inoland/UE5/ino-lite-rt-ue -c filter.lfs.required=false -c filter.lfs.smudge=cat -c filter.lfs.process= -c filter.lfs.clean=cat commit -m ' *)",
       "Bash(git -C /Users/inoland/UE5/ino-lite-rt-ue -c filter.lfs.required=false -c filter.lfs.smudge=cat -c filter.lfs.process= -c filter.lfs.clean=cat log --oneline -7)",
-      "Bash(git -C /Users/inoland/UE5/ino-lite-rt-ue -c filter.lfs.required=false -c filter.lfs.smudge=cat -c filter.lfs.process= -c filter.lfs.clean=cat submodule status LiteRT/vendor/LiteRT-LM)"
+      "Bash(git -C /Users/inoland/UE5/ino-lite-rt-ue -c filter.lfs.required=false -c filter.lfs.smudge=cat -c filter.lfs.process= -c filter.lfs.clean=cat submodule status LiteRT/vendor/LiteRT-LM)",
+      "Bash(cd \"E:/Projects/InoProject/Plugins/InoLiteRT/Convert/NeuTTS/output\" && rm -f neutts_nano_*_ekv2048.tflite neutts_nano_*_ekv2048.litertlm neutts_nano_*_ekv2048.litertlm.xnnpack_cache_* && echo \"---after delete---\" && ls neutts_nano_*)",
+      "Bash(git -C \"E:/Projects/InoProject/Plugins/InoLiteRT\" add Convert/NeuTTS/scripts/build_litertlm.py)",
+      "Bash(git -C E:/Projects/InoProject/Plugins/InoLiteRT commit -m 'convert/neutts: pass prefer_activation_type via additional_metadata *)",
+      "Bash(git -C \"E:/Projects/InoProject/Plugins/InoLiteRT\" add Convert/NeuTTS/scripts/test_tts.py)",
+      "Bash(git -C E:/Projects/InoProject/Plugins/InoLiteRT commit -m 'convert/neutts: test_tts.py — discover backbone shapes dynamically *)",
+      "Bash(ls \"E:/Projects/InoProject/Plugins/InoLiteRT/.git/index.lock\" 2>&1 && rm -f \"E:/Projects/InoProject/Plugins/InoLiteRT/.git/index.lock\" && echo \"lock removed\")",
+      "Bash(git -C \"E:/Projects/InoProject/Plugins/InoLiteRT\" add Convert/NeuTTS/CLAUDE.md)",
+      "Bash(mask)",
+      "Bash(git -C E:/Projects/InoProject/Plugins/InoLiteRT commit -m 'convert/neutts: update CLAUDE.md for Option C \\(GPU-tuned variant\\) *)"
     ]
   }
 }
