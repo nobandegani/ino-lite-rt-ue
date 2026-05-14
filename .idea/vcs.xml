@@ -2,6 +2,7 @@
 <project version="4">
   <component name="VcsDirectoryMappings">
     <mapping directory="" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/Convert/NeuCodec/vendor/neucodec" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/Convert/NeuTTS/models/nano" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/Convert/NeuTTS/vendor/neutts" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/LiteRT/vendor/LiteRT" vcs="Git" />
