@@ -53,29 +53,99 @@ TEMPERATURE = 1.0
 MIN_NEW_TOKENS = 50             # Match NeuTTS's _infer_torch — don't let the
                                 # model emit EOS in the first 50 steps. Without
                                 # this short utterances cut off after ~0.5 s.
-NUM_LAYERS = 24
-NUM_KV_HEADS = 3
-HEAD_DIM = 64
-KV_CACHE_MAX_LEN = 2048
-PREFILL_BUCKETS = [128, 512, 1024]
 SAMPLE_RATE = 24000
 
+# Mask value for positions we DON'T want attended to. Added to QK scores
+# before softmax — large negative is needed to push softmax weight to ~0.
+MASK_NEG_INF = -1e9
 
-def _zero_kv_cache():
-    """Build the all-zero KV cache dict expected by both prefill and decode."""
-    shape = (1, KV_CACHE_MAX_LEN, NUM_KV_HEADS, HEAD_DIM)
+
+def _inspect_backbone(interp):
+    """Read shapes from the loaded interpreter so we don't hardcode anything.
+
+    Works for both the old BTNH (default) and new BNTH/BNHT (--transpose_kv_cache)
+    layouts, with or without `mask` as input.
+    """
+    sigs = interp.get_signature_list()
+    # Prefill buckets — parse "prefill_NNN" -> NNN, sorted ascending.
+    prefill_buckets = sorted(
+        int(name.split("_", 1)[1])
+        for name in sigs.keys()
+        if name.startswith("prefill_") and name.split("_", 1)[1].isdigit()
+    )
+    if not prefill_buckets:
+        raise SystemExit(f"No prefill_* signatures in backbone: {list(sigs.keys())}")
+    if "decode" not in sigs:
+        raise SystemExit(f"No `decode` signature in backbone: {list(sigs.keys())}")
+
+    # KV cache shape from kv_cache_k_0 of the first prefill signature.
+    runner0 = interp.get_signature_runner(f"prefill_{prefill_buckets[0]}")
+    inputs = runner0.get_input_details()
+    k0 = inputs.get("kv_cache_k_0")
+    if k0 is None:
+        raise SystemExit("kv_cache_k_0 not found in backbone inputs.")
+    k_shape = tuple(int(x) for x in k0["shape"])  # K layout
+    v0 = inputs.get("kv_cache_v_0")
+    v_shape = tuple(int(x) for x in v0["shape"]) if v0 is not None else None
+
+    num_layers = sum(1 for k in inputs if k.startswith("kv_cache_k_"))
+    has_mask = "mask" in inputs
+
+    return {
+        "prefill_buckets": prefill_buckets,
+        "num_layers": num_layers,
+        "k_shape": k_shape,            # full K cache shape including batch
+        "v_shape": v_shape,
+        "has_mask": has_mask,
+        "kv_cache_max_len": _infer_kv_max(k_shape, v_shape),
+    }
+
+
+def _infer_kv_max(k_shape, v_shape):
+    """The KV "time" dim is the dim with the biggest extent (typically 2048 or 2053)."""
+    return max(k_shape[1:])  # ignore batch dim
+
+
+def _zero_kv_cache(num_layers, k_shape, v_shape):
+    """Build all-zero K/V cache tensors with the exact shapes the model wants."""
     kv = {}
-    for i in range(NUM_LAYERS):
-        kv[f"kv_cache_k_{i}"] = np.zeros(shape, dtype=np.float32)
-        kv[f"kv_cache_v_{i}"] = np.zeros(shape, dtype=np.float32)
+    for i in range(num_layers):
+        kv[f"kv_cache_k_{i}"] = np.zeros(k_shape, dtype=np.float32)
+        kv[f"kv_cache_v_{i}"] = np.zeros(v_shape, dtype=np.float32)
     return kv
 
 
-def _pick_prefill_bucket(prompt_len: int) -> int:
-    for b in PREFILL_BUCKETS:
+def _build_prefill_mask(prefill_len, kv_max):
+    """Causal mask for the first prefill from an empty cache.
+
+    Shape: [1, 1, prefill_len, kv_max]. mask[..., i, j] = 0 if j <= i, -inf otherwise.
+    """
+    mask = np.full((1, 1, prefill_len, kv_max), MASK_NEG_INF, dtype=np.float32)
+    # Lower-triangular zeros within the [prefill_len, prefill_len] block.
+    i = np.arange(prefill_len)[:, None]
+    j = np.arange(prefill_len)[None, :]
+    mask[0, 0, :, :prefill_len] = np.where(j <= i, 0.0, MASK_NEG_INF).astype(np.float32)
+    return mask
+
+
+def _build_decode_mask(current_pos, kv_max):
+    """Mask for one decode step at position `current_pos`.
+
+    The new token at position p attends to KV slots [0..p] (its own slot
+    is being written right now). Slots beyond p are -inf.
+    """
+    mask = np.full((1, 1, 1, kv_max), MASK_NEG_INF, dtype=np.float32)
+    mask[0, 0, 0, : current_pos + 1] = 0.0
+    return mask
+
+
+def _pick_prefill_bucket(prompt_len, prefill_buckets):
+    for b in prefill_buckets:
         if prompt_len <= b:
             return b
-    raise ValueError(f"Prompt length {prompt_len} exceeds max bucket {PREFILL_BUCKETS[-1]}.")
+    raise ValueError(
+        f"Prompt length {prompt_len} exceeds max bucket {prefill_buckets[-1]}."
+    )
 
 
 def _sample_top_k(logits: np.ndarray, k: int, temperature: float) -> int:
@@ -125,7 +195,14 @@ def main():
             f"No NeuCodec variant exists for --quant={args.quant} (only fp32/fp16/int8)."
         )
     if args.backbone is None:
-        args.backbone = f"output/neutts_nano_{bb_suffix}_ekv2048.tflite"
+        # Try the new GPU-tuned ekv2053 first, fall back to the old ekv2048.
+        for kv_size in (2053, 2048):
+            candidate = f"output/neutts_nano_{bb_suffix}_ekv{kv_size}.tflite"
+            if Path(candidate).exists():
+                args.backbone = candidate
+                break
+        if args.backbone is None:
+            args.backbone = f"output/neutts_nano_{bb_suffix}_ekv2053.tflite"
     if args.codec is None:
         # Codec .tflite is multi-signature now (one file per quant tier,
         # multiple F buckets as signatures named f100/f200/f400/f600/f1000).
@@ -176,26 +253,37 @@ def main():
     tok = AutoTokenizer.from_pretrained(args.tokenizer_dir)
     prompt_ids = tok.encode(prompt)
     print(f"  prompt_ids length: {len(prompt_ids)}")
-    if len(prompt_ids) > PREFILL_BUCKETS[-1]:
-        raise SystemExit(
-            f"Prompt {len(prompt_ids)} tokens exceeds prefill_{PREFILL_BUCKETS[-1]}. "
-            "Use a shorter reference voice or input."
-        )
 
-    # --- 5. Load backbone and run prefill ----------------------------
+    # --- 5. Load backbone, inspect signatures, run prefill ----------
     print(f"[4/7] Loading backbone {Path(args.backbone).name}...")
     bb = litert_interpreter.Interpreter(model_path=args.backbone)
     bb.allocate_tensors()
+    info = _inspect_backbone(bb)
+    print(
+        f"  backbone shapes: prefill buckets={info['prefill_buckets']},"
+        f" layers={info['num_layers']},"
+        f" K={info['k_shape']}, V={info['v_shape']},"
+        f" kv_max={info['kv_cache_max_len']}, mask={info['has_mask']}"
+    )
 
-    bucket = _pick_prefill_bucket(len(prompt_ids))
+    if len(prompt_ids) > info["prefill_buckets"][-1]:
+        raise SystemExit(
+            f"Prompt {len(prompt_ids)} tokens exceeds prefill_{info['prefill_buckets'][-1]}. "
+            "Use a shorter reference voice or input."
+        )
+
+    bucket = _pick_prefill_bucket(len(prompt_ids), info["prefill_buckets"])
     print(f"[5/7] Prefilling (bucket={bucket})...")
     pad_len = bucket - len(prompt_ids)
     tokens_padded = np.array([prompt_ids + [0] * pad_len], dtype=np.int32)
     input_pos = np.arange(bucket, dtype=np.int32)
 
-    kv = _zero_kv_cache()
+    kv = _zero_kv_cache(info["num_layers"], info["k_shape"], info["v_shape"])
     prefill_runner = bb.get_signature_runner(f"prefill_{bucket}")
-    kv_out = prefill_runner(tokens=tokens_padded, input_pos=input_pos, **kv)
+    prefill_inputs = dict(tokens=tokens_padded, input_pos=input_pos, **kv)
+    if info["has_mask"]:
+        prefill_inputs["mask"] = _build_prefill_mask(bucket, info["kv_cache_max_len"])
+    kv_out = prefill_runner(**prefill_inputs)
     # Carry forward updated KV cache
     for k, v in kv_out.items():
         if k.startswith(("kv_cache_k_", "kv_cache_v_")):
@@ -226,7 +314,10 @@ def main():
             dtype=np.int32,
         )
         pos_in = np.array([pos], dtype=np.int32)
-        out = decode_runner(tokens=tok_in, input_pos=pos_in, **kv)
+        decode_inputs = dict(tokens=tok_in, input_pos=pos_in, **kv)
+        if info["has_mask"]:
+            decode_inputs["mask"] = _build_decode_mask(pos, info["kv_cache_max_len"])
+        out = decode_runner(**decode_inputs)
         logits = out["logits"][0, 0, :].copy()
         # Block EOS for the first MIN_NEW_TOKENS steps so short utterances
         # don't get cut off mid-word.
