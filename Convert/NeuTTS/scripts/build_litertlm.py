@@ -170,11 +170,21 @@ def _build_one_bundle(
   # forces FP32 on the GPU path regardless — the consumer plugin must
   # call `litert_lm_engine_settings_set_activation_data_type(s, 1)`
   # AFTER `_create()` to make this stick.
+  # NOTE: PyPI litert-lm-builder 0.11.0 only accepts backend_constraint
+  # as a kwarg. `prefer_activation_type` is supported by the newer
+  # source in vendor/LiteRT-LM but not in the wheel — pass it through
+  # additional_metadata as a free-form Metadata entry. The runtime
+  # loader (litert_lm_loader.cc:86-95) reads it from the section's
+  # KV items regardless of which builder API set it.
   builder.add_tflite_model(
       str(tflite_path),
       TfLiteModelType.PREFILL_DECODE,
       backend_constraint="gpu,cpu",
-      prefer_activation_type="fp16",
+      additional_metadata=[Metadata(
+          key="prefer_activation_type",
+          value="fp16",
+          dtype=DType.STRING,
+      )],
   )
 
   # HF tokenizer.json — the bundler zlib-compresses it into the bundle.
