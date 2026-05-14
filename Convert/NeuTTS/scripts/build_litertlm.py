@@ -157,9 +157,24 @@ def _build_one_bundle(
 
   # The .tflite itself — tagged PREFILL_DECODE so LiteRT-LM picks it up
   # as the main inference model.
+  #
+  # `backend_constraint="gpu,cpu"` means the bundle works on either
+  # backend (the engine rejects loading if neither matches). The actual
+  # .tflite was exported with --transpose_kv_cache --mask_as_input
+  # --gpu_dynamic_shapes which optimizes it for the GPU/WebGPU delegate
+  # but XNNPACK still runs it correctly with a ~5-10% perf hit.
+  #
+  # `prefer_activation_type="fp16"` is a runtime HINT for the executor
+  # to compute intermediate tensors in fp16. Both WebGPU and XNNPACK
+  # honor it. NOTE: the LiteRT-LM C API at engine.cc:375-380 currently
+  # forces FP32 on the GPU path regardless — the consumer plugin must
+  # call `litert_lm_engine_settings_set_activation_data_type(s, 1)`
+  # AFTER `_create()` to make this stick.
   builder.add_tflite_model(
       str(tflite_path),
       TfLiteModelType.PREFILL_DECODE,
+      backend_constraint="gpu,cpu",
+      prefer_activation_type="fp16",
   )
 
   # HF tokenizer.json — the bundler zlib-compresses it into the bundle.
