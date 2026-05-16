@@ -61,7 +61,19 @@
       "Bash(ls \"E:/Projects/InoProject/Plugins/InoLiteRT/.git/index.lock\" 2>&1 && rm -f \"E:/Projects/InoProject/Plugins/InoLiteRT/.git/index.lock\" && echo \"lock removed\")",
       "Bash(git -C \"E:/Projects/InoProject/Plugins/InoLiteRT\" add Convert/NeuTTS/CLAUDE.md)",
       "Bash(mask)",
-      "Bash(git -C E:/Projects/InoProject/Plugins/InoLiteRT commit -m 'convert/neutts: update CLAUDE.md for Option C \\(GPU-tuned variant\\) *)"
+      "Bash(git -C E:/Projects/InoProject/Plugins/InoLiteRT commit -m 'convert/neutts: update CLAUDE.md for Option C \\(GPU-tuned variant\\) *)",
+      "Bash(xxd)",
+      "Bash(git -C \"E:\\\\Projects\\\\Project\\\\InoProject\\\\Plugins\\\\InoAgents\" add Source/InoNeuTTS/Private/InoNeuTTSSettings.cpp Source/InoNeuTTS/Private/NeuTTS/InoNeuTTSCommon.h Source/InoNeuTTS/Public/InoNeuTTSSettings.h Source/InoNeuTTS/Public/NeuTTS/InoNeuTTSTypes.h Source/InoNeuTTS/Private/SmokeTests/InoNeuTTSCoexistenceProbeTest.cpp)",
+      "Bash(git -C \"E:\\\\Projects\\\\Project\\\\InoProject\\\\Plugins\\\\InoAgents\" diff --cached --stat)",
+      "Bash(git -C \"E:\\\\Projects\\\\Project\\\\InoProject\\\\Plugins\\\\InoAgents\" reset HEAD Source/InoNeuTTS/Private/SmokeTests/InoNeuTTSCoexistenceProbeTest.cpp)",
+      "Bash(git -C 'E:\\\\Projects\\\\Project\\\\InoProject\\\\Plugins\\\\InoAgents' commit -m ' *)",
+      "Bash(git -C \"E:\\\\Projects\\\\Project\\\\InoProject\\\\Plugins\\\\InoAgents\" log --oneline -1)",
+      "Bash(git -C \"E:\\\\Projects\\\\Project\\\\InoProject\\\\Plugins\\\\InoAgents\" add Source/InoLiteRtLm/Private/InoLiteRtLmSettings.cpp Source/InoLiteRtLm/Private/LiteRtLm/InoLiteRtLmSubsystem.cpp Source/InoLiteRtLm/Public/InoLiteRtLmSettings.h Source/InoLiteRtLm/Public/LiteRtLm/InoLiteRtLmTypes.h)",
+      "Bash(git -C \"E:\\\\Projects\\\\Project\\\\InoProject\\\\Plugins\\\\InoAgents\" add Source/InoNeuTTS/Private/NeuTTS/InoNeuTTSEngineBackend.cpp Source/InoNeuTTS/Private/NeuTTS/InoNeuTTSEngineBackend.h Source/InoNeuTTS/Private/NeuTTS/InoNeuTTSRunner.cpp Source/InoNeuTTS/Private/NeuTTS/InoNeuTTSRunner.h)",
+      "Bash(git -C \"E:\\\\Projects\\\\Project\\\\InoProject\\\\Plugins\\\\InoAgents\" log --oneline -3)",
+      "Bash(git -C \"E:\\\\Projects\\\\Project\\\\InoProject\\\\Plugins\\\\InoLiteRT\\\\LiteRT\\\\vendor\\\\LiteRT-LM\" log --oneline -5)",
+      "Bash(git -C \"E:\\\\Projects\\\\Project\\\\InoProject\\\\Plugins\\\\InoLiteRT\\\\LiteRT\\\\vendor\\\\LiteRT-LM\" remote -v)",
+      "Bash(git log *)"
     ]
   }
 }
