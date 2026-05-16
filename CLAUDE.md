@@ -7,8 +7,15 @@ inside `Plugins/InoLiteRT/`. The hosting demo project is documented in
 ## What this plugin is
 
 An Unreal Engine 5.7 plugin that integrates **LiteRT** and **LiteRT-LM**
-into Unreal — building the libraries from source and exposing them as a
-UE module that other plugins can depend on.
+into Unreal and exposes them as a UE module other plugins depend on.
+
+Only **LiteRT-LM** is built from source (Bazel target `//ino:LiteRtLm`,
+defined by `overlay/ino/BUILD.bazel`). **LiteRT itself is NOT built
+here** — its `libLiteRt.{dll,so,dylib}` is the upstream prebuilt shipped
+inside LiteRT-LM's `prebuilt/<platform>/`, and its headers come from
+Bazel's external fetch of the LiteRT repo. Both are pinned by
+LiteRT-LM's `WORKSPACE` `LITERT_REF`, so moving the LiteRT-LM pin moves
+LiteRT with it.
 
 ## Layout
 
@@ -21,11 +28,17 @@ Plugins/InoLiteRT/
 └── Source/                    ← The UE module (Build.cs, headers, runtime glue)
 ```
 
-- **`LiteRT/`** — owns the build pipeline. Bazel workspace, build scripts
-  (`build-win64.ps1` + `build-android.ps1` + `setup.ps1` + `clean.ps1` for
-  Windows hosts; `build-macos.sh` + `build-ios.sh` + `setup.sh` for macOS
-  hosts), vendored upstream submodules. Outputs land in
-  `Source/ThirdParty/`.
+- **`LiteRT/`** — owns the build pipeline. Build scripts (`setup.ps1` +
+  `build-win64.ps1` + `build-android.ps1` + `clean.ps1` for Windows
+  hosts; `setup.sh` + `build-macos.sh` + `build-ios.sh` + `clean.sh`
+  for macOS hosts), `overlay/` (the `//ino:LiteRtLm` Bazel target +
+  `kLiteRtLmForceKeep[]`, the hand-maintained C-API export list copied
+  into the submodule by setup), and vendored upstream submodules.
+  Outputs land in `Source/ThirdParty/`. The LiteRT-LM pin is recorded
+  in `LiteRT/LITERT_LM_TAG` — that file is authoritative; the
+  `vendor/LiteRT-LM` submodule gitlink is marked `ignore = dirty`
+  (build mutates it) and is NOT the source of truth. `vendor/LiteRT`
+  is a mirror of `LITERT_REF` and is **not consumed by the build**.
 - **`Convert/`** — dev-time tooling for taking external models (PyTorch,
   HF, etc.) and producing `.tflite` artifacts that LiteRT/LiteRT-LM can
   load. Per-model subfolders.
@@ -47,6 +60,52 @@ LiteRT-LM ships no `macos_x86_64` prebuilts; Apple Silicon is the M1+ era).
 iOS frameworks are App Store-compliant — `.dylib` files are wrapped into
 `.framework` bundles and embedded into `MyApp.app/Frameworks/` at packaging
 time, signed with the app's distribution identity by UE's IOSToolChain.
+
+## Build & capability model
+
+The Bazel-built `LiteRtLm` binary is **CPU/XNNPACK only on every
+platform** — no GPU/NPU accelerator is statically linked (upstream's
+`litert_gpu_accelerator_deps()` is an OSS no-op;
+`LiteRtStaticLinkedAcceleratorGpuDef` is permanently null). All GPU/NPU
+capability is delivered by runtime `dlopen` of the prebuilt
+accelerator/sampler libs the scripts stage next to it:
+
+| Platform | GPU (prebuilt, dlopen'd) | NPU |
+|---|---|---|
+| Win64 | WebGPU/Dawn → D3D12 (needs staged `dxcompiler.dll`/`dxil.dll`) | ready, not functional¹ |
+| Android arm64/x86_64 | OpenCL + WebGPU + samplers | ready, not functional¹ |
+| macOS arm64 | Metal + WebGPU | n/a (no Apple NPU vendor) |
+| iOS arm64/sim | CPU-only today² | upstream-disabled |
+
+Scripts stage `build_config_gpu_npu.h` (CPU+GPU+NPU; matches the
+upstream-default `gpu,npu` prebuilt) on Win64/Android/macOS, and
+`build_config_gpu.h` on iOS — LiteRT-LM `runtime/executor/BUILD`
+force-sets `LITERT_DISABLE_NPU` only under `@platforms//os:ios`, so the
+iOS consumer header must match.
+
+¹ Functional NPU additionally needs a `libLiteRtDispatch_<Vendor>`
+  (Qualcomm / MediaTek / Intel OpenVINO / …) which is vendor-SDK-gated
+  and ships in NO `prebuilt/` dir. The plugin is NPU-*ready*, not
+  NPU-*functional*, until such a lib + an NPU-compiled model exist.
+² iOS ships only the Gemma constraint provider. The prebuilt Metal
+  accelerator exists upstream but isn't shipped — the monolithic-static
+  iOS build would load a second LiteRT instance (unresolved upstream).
+
+## Updating the runtime pin
+
+1. Set `LiteRT/LITERT_LM_TAG` to the new LiteRT-LM SHA and check the
+   `vendor/LiteRT-LM` submodule out to it; bump `vendor/LiteRT` to the
+   new `WORKSPACE` `LITERT_REF` to keep the mirror honest.
+2. Re-sync `overlay/ino/LiteRtLm_exports.cc` `kLiteRtLmForceKeep[]`
+   against every `LITERT_LM_C_API_EXPORT` in `c/engine.h` — a missing
+   entry is silently dropped from the DLL (no static check).
+3. **Diff `c/engine.h` signatures old→new, not just export names** —
+   existing functions can change parameters. The `InoAgents` plugin is
+   the real LiteRT-LM consumer (InoLiteRT only loads the libs); changed
+   signatures need call-site migration there.
+4. Re-run the per-platform build script(s); verify the staged
+   `LiteRtLm` exports the full `litert_lm_*` set; commit the rebuilt
+   `Source/ThirdParty/<platform>/` + shared `Public/litert/**`.
 
 ## How other plugins consume this
 
