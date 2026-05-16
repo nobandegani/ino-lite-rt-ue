@@ -397,23 +397,38 @@ if (Test-Path $lmHeader) {
 }
 
 # --- Header: LiteRT build_config.h (feature-toggle gate) ---
-# litert/c/litert_common.h:20 includes <litert/build_common/build_config.h>,
-# which upstream generates at Bazel-build time by selecting one of
-# litert/build_common/config/build_config_*.h based on the configured
-# feature set. We don't run that generator step (the configured Bazel build
-# produces the .dll/.so but doesn't write this header into a path we stage),
-# so we instead copy the matching variant directly.
+# litert/c/litert_common.h includes <litert/build_common/build_config.h>;
+# this header is the consumer-visible gate for LITERT_HAS_* feature
+# macros and MUST match the configuration the shipped binaries were
+# built with, or the UE C++ side will see a different feature surface
+# than libLiteRt.dll / LiteRtLm.dll actually expose.
 #
-# Variant choice: build_config_gpu.h — defines LITERT_DISABLE_NPU and
-# leaves GPU enabled, matching what InoLiteRT actually ships on Win64
-# (libLiteRtWebGpuAccelerator.dll, libLiteRtTopKWebGpuSampler.dll, no NPU
-# accelerators). The cpu_only variant would also disable LITERT_HAS_GPU
-# checks consumers may rely on; the gpu_npu / npu variants include NPU
-# code paths that aren't built into our DLLs.
-$buildConfigSrc = Join-Path $LiteRtSubDir "litert\build_common\config\build_config_gpu.h"
+# Source of truth (litert @ d865fd82, litert/build_common/BUILD): the
+# string_flag `build_include` defaults to "gpu,npu", and the
+# build_config_header copy_file rule maps the default condition to
+# config/build_config_gpu_npu.h. The upstream prebuilt libLiteRt.dll
+# (prebuilt/windows_x86_64/) and our //c:engine build of LiteRtLm.dll
+# are both produced with that default => NPU code paths compiled IN.
+# build_config_gpu_npu.h defines neither LITERT_DISABLE_GPU nor
+# LITERT_DISABLE_NPU, so on Win64 (litert/c/litert_common.h:155-165)
+# it enables the WebGPU + Vulkan GPU defaults and the NPU buffer
+# macros — matching the binaries. (The older build_config_gpu.h
+# variant set LITERT_DISABLE_NPU, which under-reported the surface
+# vs. the NPU-on binaries — a latent mismatch, now fixed.)
+#
+# GPU/NPU accelerators are NOT in the binary: litert
+# build_common/special_rule.bzl litert_gpu_accelerator_deps() returns
+# [] and LiteRtStaticLinkedAcceleratorGpuDef is permanently nullptr,
+# so every accelerator is dlopen'd at runtime from the staged prebuilt
+# .dll set (Win64 GPU == WebGPU/Dawn via DXC; there is no Vulkan
+# accelerator lib anywhere in the tree). Functional NPU additionally
+# needs a libLiteRtDispatch_* vendor lib (Qualcomm/Intel OpenVINO/…)
+# which is vendor-SDK-gated and ships in NO prebuilt/ dir — the
+# gpu_npu header makes the plugin NPU-ready, not NPU-functional.
+$buildConfigSrc = Join-Path $LiteRtSubDir "litert\build_common\config\build_config_gpu_npu.h"
 if (Test-Path $buildConfigSrc) {
     Copy-Item -Path $buildConfigSrc -Destination (Join-Path $LiteRtBuildHdrDst "build_config.h") -Force
-    Write-Host "  [STAGE] litert/build_common/build_config.h (from build_config_gpu.h) -> $LiteRtBuildHdrDst"
+    Write-Host "  [STAGE] litert/build_common/build_config.h (from build_config_gpu_npu.h) -> $LiteRtBuildHdrDst"
 } else {
     Write-Warning "Expected header not found at $buildConfigSrc"
 }

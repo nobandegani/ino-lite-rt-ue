@@ -293,15 +293,23 @@ else
     echo -e "${YELLOW}WARNING: expected header not found at ${lm_header}${RESET}" >&2
 fi
 
-# LiteRT build_config.h — same selection rationale as build-win64.ps1:
-# build_config_gpu.h matches our shipped feature set (GPU enabled, NPU
-# disabled). On Apple platforms the GPU path is Metal+WebGPU, but the gate
-# header just controls LITERT_HAS_GPU / LITERT_DISABLE_NPU defines, not the
-# specific accelerator backend.
-build_config_src="${LITERT_SUBDIR}/litert/build_common/config/build_config_gpu.h"
+# LiteRT build_config.h — same selection rationale as build-win64.ps1.
+# Source of truth (litert @ d865fd82, litert/build_common/BUILD):
+# build_include defaults to "gpu,npu" => the build_config_header
+# copy_file default is config/build_config_gpu_npu.h, and that is the
+# config upstream's prebuilt macos_arm64 libLiteRt.dylib and our
+# //c:engine build are produced with. runtime/executor/BUILD only sets
+# LITERT_DISABLE_NPU under @platforms//os:ios — macOS is NOT iOS, so the
+# macOS binary compiles the NPU executor in and the consumer header must
+# match (build_config_gpu_npu.h, defining no LITERT_DISABLE_*). On Apple
+# (litert/c/litert_common.h:151-154) this yields Metal + WebGPU GPU
+# enabled; the NPU buffer macros default to 0 on Apple regardless (no
+# Apple NPU vendor exists), so gpu_npu vs gpu is behaviourally identical
+# on Mac for NPU but gpu_npu is the variant that matches the binary.
+build_config_src="${LITERT_SUBDIR}/litert/build_common/config/build_config_gpu_npu.h"
 if [[ -f "${build_config_src}" ]]; then
     cp -f "${build_config_src}" "${LITERT_BUILD_HDR_DST}/build_config.h"
-    echo "  [STAGE] litert/build_common/build_config.h (from build_config_gpu.h) -> ${LITERT_BUILD_HDR_DST}"
+    echo "  [STAGE] litert/build_common/build_config.h (from build_config_gpu_npu.h) -> ${LITERT_BUILD_HDR_DST}"
 else
     echo -e "${YELLOW}WARNING: expected header not found at ${build_config_src}${RESET}" >&2
 fi

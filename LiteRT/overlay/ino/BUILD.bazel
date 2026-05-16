@@ -109,12 +109,29 @@ cc_binary(
         "//conditions:default": [],
     }),
     deps = [
-        # Full engine with both CPU and GPU (Vulkan on Windows) backends.
-        # Runtime selection via the backend_str parameter to
-        # litert_lm_engine_settings_create ("cpu" or "gpu"). The CPU path
-        # is always available; the GPU path requires Vulkan drivers.
-        # Swapped from //c:engine_cpu (CPU-only) after Milestone D verified
-        # the full UE integration end-to-end.
+        # //c:engine is the maximal engine target (c/BUILD: the only
+        # non-cpu-only variant; the alternative is //c:engine_cpu).
+        # IMPORTANT (source, litert @ d865fd82): GPU/NPU accelerators are
+        # NOT linked into this binary. runtime/core:engine_impl's
+        # default_static_gpu_accelerator / default_static_gpu_samplers are
+        # empty shells in every select() branch, litert
+        # build_common/special_rule.bzl litert_gpu_accelerator_deps()
+        # returns [] ("no-op outside Google"), and
+        # LiteRtStaticLinkedAcceleratorGpuDef is permanently nullptr. So
+        # //ino:LiteRtLm is CPU/XNNPACK on every platform; ALL GPU and NPU
+        # capability is delivered by runtime dlopen of the prebuilt libs
+        # staged next to it (gpu_registry.cc / litert_dispatch.cc). The
+        # NPU compiled-model executor IS compiled in here (except iOS,
+        # where runtime/executor/BUILD force-sets LITERT_DISABLE_NPU) but
+        # is inert until a vendor libLiteRtDispatch_* lib is present.
+        #
+        # Backend is chosen at RUNTIME via backend_str passed to
+        # litert_lm_engine_settings_create ("cpu" / "gpu" / NPU); it is
+        # not a compile-time switch and does not change the C-API surface.
+        # Per-platform GPU accelerator: Win64 = WebGPU/Dawn (D3D12 via
+        # DXC; there is NO Vulkan accelerator lib in the tree despite
+        # LITERT_HAS_VULKAN defaulting on for Windows), Android =
+        # OpenCL+WebGPU, Apple = Metal+WebGPU.
         "//c:engine",
     ],
 )

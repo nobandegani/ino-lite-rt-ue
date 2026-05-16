@@ -391,21 +391,33 @@ if (Test-Path $lmHeader) {
 }
 
 # --- Header: LiteRT build_config.h (feature-toggle gate) ---
-# Same rationale as build-win64.ps1: litert_common.h:20 includes
-# <litert/build_common/build_config.h>, which upstream generates at
-# Bazel-build time by selecting one of litert/build_common/config/
-# build_config_*.h. We copy the matching variant directly.
+# Same rationale as build-win64.ps1. This header is the consumer-visible
+# gate for LITERT_HAS_* macros and MUST match the configuration the
+# shipped binaries were built with.
 #
-# Variant choice: build_config_gpu.h — defines LITERT_DISABLE_NPU and
-# leaves GPU enabled. Matches what InoLiteRT actually ships on Android
-# (libLiteRtGpuAccelerator.so + libLiteRtOpenClAccelerator.so +
-# libLiteRtWebGpuAccelerator.so + samplers, no NPU accelerators). Both
-# arm64-v8a and x86_64 ship the same GPU-enabled / NPU-disabled set,
-# so the same header is correct for both.
-$buildConfigSrc = Join-Path $LiteRtSubDir "litert\build_common\config\build_config_gpu.h"
+# Source of truth (litert @ d865fd82, litert/build_common/BUILD): the
+# string_flag `build_include` defaults to "gpu,npu" and the
+# build_config_header copy_file maps the default to
+# config/build_config_gpu_npu.h. Upstream's prebuilt Android libs and
+# our //c:engine build of libLiteRtLm.so are produced with that default
+# (NPU compiled IN — runtime/executor/BUILD only sets LITERT_DISABLE_NPU
+# under @platforms//os:ios, NOT Android). build_config_gpu_npu.h defines
+# neither LITERT_DISABLE_GPU nor LITERT_DISABLE_NPU, so on Android
+# (litert/c/litert_common.h:159-172) it enables OpenCL + Vulkan + WebGPU
+# + the NPU buffer macros — matching the binaries. The same header is
+# correct for both arm64-v8a and x86_64. (The older build_config_gpu.h
+# under-reported the surface vs. the NPU-on binaries — now fixed.)
+#
+# GPU/NPU accelerators are NOT in the .so: every accelerator is dlopen'd
+# at runtime from the staged prebuilt set (libLiteRtGpuAccelerator.so /
+# OpenClAccelerator / WebGpuAccelerator + samplers). Functional NPU
+# additionally needs a libLiteRtDispatch_* vendor lib (Qualcomm /
+# MediaTek / Google Tensor) that is vendor-SDK-gated and ships in NO
+# prebuilt/ dir — gpu_npu makes the plugin NPU-ready, not functional.
+$buildConfigSrc = Join-Path $LiteRtSubDir "litert\build_common\config\build_config_gpu_npu.h"
 if (Test-Path $buildConfigSrc) {
     Copy-Item -Path $buildConfigSrc -Destination (Join-Path $LiteRtBuildHdrDst "build_config.h") -Force
-    Write-Host "  [STAGE] litert/build_common/build_config.h (from build_config_gpu.h) -> $LiteRtBuildHdrDst"
+    Write-Host "  [STAGE] litert/build_common/build_config.h (from build_config_gpu_npu.h) -> $LiteRtBuildHdrDst"
 } else {
     Write-Warning "Expected header not found at $buildConfigSrc"
 }
