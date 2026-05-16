@@ -47,6 +47,10 @@
 //   - 4dbbf937 (post-v0.10.2 main, 2026-04-27)  ->  75 functions
 //   - v0.11.0-rc.1 (7d1923da, 2026-04-29)       ->  82 functions
 //   - v0.11.0      (668e745f, post-rc.1)        ->  82 functions  (no set delta)
+//   - e75f2064 (post-v0.11.0 main, 2026-05-15)  ->  88 functions  (+6 vs v0.11.0:
+//       litert_lm_conversation_clone,
+//       litert_lm_conversation_optional_args_{create,delete,set_visual_token_budget},
+//       litert_lm_engine_settings_set_{max_num_images,litert_dispatch_lib_dir})
 
 #include "c/engine.h"
 
@@ -74,10 +78,15 @@ volatile LiteRtLmFn kLiteRtLmForceKeep[] = {
     reinterpret_cast<LiteRtLmFn>(&litert_lm_conversation_config_set_filter_channel_content_from_kv_cache),
     reinterpret_cast<LiteRtLmFn>(&litert_lm_conversation_config_delete),
 
+    // Conversation optional args (3)  [added post-v0.11.0, e75f2064]
+    reinterpret_cast<LiteRtLmFn>(&litert_lm_conversation_optional_args_create),
+    reinterpret_cast<LiteRtLmFn>(&litert_lm_conversation_optional_args_delete),
+    reinterpret_cast<LiteRtLmFn>(&litert_lm_conversation_optional_args_set_visual_token_budget),
+
     // Logging (1)
     reinterpret_cast<LiteRtLmFn>(&litert_lm_set_min_log_level),
 
-    // Engine settings (11)
+    // Engine settings (13)
     reinterpret_cast<LiteRtLmFn>(&litert_lm_engine_settings_create),
     reinterpret_cast<LiteRtLmFn>(&litert_lm_engine_settings_delete),
     reinterpret_cast<LiteRtLmFn>(&litert_lm_engine_settings_set_max_num_tokens),
@@ -89,6 +98,8 @@ volatile LiteRtLmFn kLiteRtLmForceKeep[] = {
     reinterpret_cast<LiteRtLmFn>(&litert_lm_engine_settings_set_num_prefill_tokens),
     reinterpret_cast<LiteRtLmFn>(&litert_lm_engine_settings_set_num_decode_tokens),
     reinterpret_cast<LiteRtLmFn>(&litert_lm_engine_settings_set_enable_speculative_decoding),
+    reinterpret_cast<LiteRtLmFn>(&litert_lm_engine_settings_set_max_num_images),
+    reinterpret_cast<LiteRtLmFn>(&litert_lm_engine_settings_set_litert_dispatch_lib_dir),
 
     // Engine lifecycle (3)
     reinterpret_cast<LiteRtLmFn>(&litert_lm_engine_create),
@@ -131,8 +142,9 @@ volatile LiteRtLmFn kLiteRtLmForceKeep[] = {
     reinterpret_cast<LiteRtLmFn>(&litert_lm_benchmark_info_get_prefill_tokens_per_sec_at),
     reinterpret_cast<LiteRtLmFn>(&litert_lm_benchmark_info_get_decode_tokens_per_sec_at),
 
-    // Conversation lifecycle + messaging (7)
+    // Conversation lifecycle + messaging (8)
     reinterpret_cast<LiteRtLmFn>(&litert_lm_conversation_create),
+    reinterpret_cast<LiteRtLmFn>(&litert_lm_conversation_clone),
     reinterpret_cast<LiteRtLmFn>(&litert_lm_conversation_delete),
     reinterpret_cast<LiteRtLmFn>(&litert_lm_conversation_send_message),
     reinterpret_cast<LiteRtLmFn>(&litert_lm_conversation_send_message_stream),
