@@ -1,6 +1,12 @@
 [submodule "LiteRT/vendor/LiteRT-LM"]
 	path = LiteRT/vendor/LiteRT-LM
 	url = https://github.com/google-ai-edge/LiteRT-LM.git
+	# Build input, not a versioned dep: the Bazel build mutates tracked
+	# files (e.g. cxxbridge_cmd/Cargo.lock) and drops untracked artifacts
+	# (overlay, bazel-*, __pycache__) inside this submodule every build.
+	# LITERT_LM_TAG is the authoritative pin; ignore in-submodule churn so
+	# it doesn't perpetually show dirty in the superproject.
+	ignore = dirty
 [submodule "LiteRT/vendor/LiteRT"]
 	path = LiteRT/vendor/LiteRT
 	url = https://github.com/google-ai-edge/LiteRT.git
