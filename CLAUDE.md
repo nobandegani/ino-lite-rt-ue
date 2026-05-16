@@ -72,7 +72,7 @@ accelerator/sampler libs the scripts stage next to it:
 
 | Platform | GPU (prebuilt, dlopen'd) | NPU |
 |---|---|---|
-| Win64 | WebGPU/Dawn → D3D12 (needs staged `dxcompiler.dll`/`dxil.dll`) | ready, not functional¹ |
+| Win64 | WebGPU/Dawn → D3D12 (needs staged `dxcompiler.dll`/`dxil.dll`)³ | ready, not functional¹ |
 | Android arm64/x86_64 | OpenCL + WebGPU + samplers | ready, not functional¹ |
 | macOS arm64 | Metal + WebGPU | n/a (no Apple NPU vendor) |
 | iOS arm64/sim | CPU-only today² | upstream-disabled |
@@ -90,6 +90,25 @@ iOS consumer header must match.
 ² iOS ships only the Gemma constraint provider. The prebuilt Metal
   accelerator exists upstream but isn't shipped — the monolithic-static
   iOS build would load a second LiteRT instance (unresolved upstream).
+³ **Known upstream issue — Win64 GPU sampling falls back to CPU.** The
+  pinned upstream `prebuilt/windows_x86_64/libLiteRtTopKWebGpuSampler.dll`
+  exports only `Create`/`Destroy`/`SampleToIdAndScoreBuffer` and is
+  missing `LiteRtTopKWebGpuSampler_UpdateConfig` (plus `CanHandleInput`/
+  `HandlesInput`/`SetInputTensorsAndInferenceFunc`), which the pinned
+  `runtime/components/sampler_factory.cc` Win64 path requires. So
+  `GetSamplerCApi` fails the symbol resolve ("The specified procedure
+  could not be found"), the WebGPU sampler is rejected, and LiteRT-LM
+  falls back to **CPU sampling** (GPU still does prefill+decode — only
+  token selection is on CPU, so the perf cost is small). Only the
+  **Windows** upstream prebuilt is incomplete; the Android/Linux/macOS
+  `prebuilt/` sampler libs export the full symbol set. This is an
+  upstream LiteRT-LM Windows-packaging defect inherited through the pin,
+  NOT an InoLiteRT staging bug (the build script copies the upstream
+  prebuilt faithfully) and NOT fixable in the InoAgents consumer.
+  Expected to be fixed upstream. On the next `LITERT_LM_TAG` bump,
+  re-check whether `prebuilt/windows_x86_64/libLiteRtTopKWebGpuSampler.dll`
+  exports `LiteRtTopKWebGpuSampler_UpdateConfig`; once it does, the Win64
+  GPU sampler will work with no code change — delete this note then.
 
 ## Updating the runtime pin
 
@@ -106,6 +125,10 @@ iOS consumer header must match.
 4. Re-run the per-platform build script(s); verify the staged
    `LiteRtLm` exports the full `litert_lm_*` set; commit the rebuilt
    `Source/ThirdParty/<platform>/` + shared `Public/litert/**`.
+5. Re-check the Win64 WebGPU-sampler issue (footnote ³): confirm whether
+   the new pin's `prebuilt/windows_x86_64/libLiteRtTopKWebGpuSampler.dll`
+   now exports `LiteRtTopKWebGpuSampler_UpdateConfig`. If it does, Win64
+   GPU sampling is fixed with no code change — delete footnote ³.
 
 ## How other plugins consume this
 
