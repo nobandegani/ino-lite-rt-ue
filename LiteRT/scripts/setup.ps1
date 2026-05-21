@@ -1,4 +1,4 @@
-# setup.ps1
+﻿# setup.ps1
 #
 # One-time setup for the LiteRT-LM Bazel build workspace:
 #   1. Verifies toolchain prerequisites (bazelisk, MSVC, BAZEL_VC, etc.)
@@ -59,6 +59,18 @@ if (-not (Test-Path $gitBash)) {
     Write-Error "Git Bash not found at '$gitBash'. Upstream .bazelrc hardcodes this path."
 }
 Write-Host "  [OK] Git Bash -> $gitBash"
+
+# BAZEL_SH controls the shell Bazel uses for WORKSPACE / loading-phase
+# commands (http_archive patch_cmds, repository_rule ctx.execute, etc.).
+# Without it, Bazel resolves bare `bash` on PATH — which on Windows finds
+# C:\Windows\System32\bash.exe (the WSL launcher) first, and fails with
+# `execvpe(/bin/bash) failed: No such file or directory` on hosts that
+# don't have a WSL distro installed. The build-config --shell_executable
+# flag in upstream .bazelrc only governs build-time genrule shells, NOT
+# loading-phase patch commands (different code path). Setting BAZEL_SH
+# here lets the @litert http_archive's sed patch_cmds run on stock Win11.
+$env:BAZEL_SH = $gitBash
+Write-Host "  [OK] BAZEL_SH = $gitBash"
 
 # Developer Mode
 try {

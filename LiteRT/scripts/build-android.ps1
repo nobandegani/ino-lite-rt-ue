@@ -1,4 +1,4 @@
-# build-android.ps1
+﻿# build-android.ps1
 #
 # Build libLiteRtLm.so from source for Android (arm64-v8a or x86_64) and
 # stage all artifacts into the InoLiteRT plugin under Source/ThirdParty/.

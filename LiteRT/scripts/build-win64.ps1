@@ -1,4 +1,4 @@
-# build-win64.ps1
+﻿# build-win64.ps1
 #
 # Build LiteRT-LM from source for Windows x64 and stage all artifacts into
 # the InoLiteRT plugin under Source/ThirdParty/{Win64,Public}.

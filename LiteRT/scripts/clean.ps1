@@ -1,4 +1,4 @@
-# clean.ps1
+﻿# clean.ps1
 #
 # Wipe the Bazel build caches for both the Win64 and Android cross-compile
 # of LiteRT-LM. Use when you want to force a full cold rebuild (e.g. after
