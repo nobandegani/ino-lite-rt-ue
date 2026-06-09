@@ -1,5 +1,8 @@
-Binaries/
-Intermediate/
+Binaries/Win64
+Binaries/Android
+Binaries/Mac
+Binaries/IOS
+Intermediate
 
 # Build-script cache: downloaded prebuilts staged from third parties
 # (e.g. Microsoft DXC v1.9.2602 zip pinned by vendor/LiteRT-LM/WORKSPACE).
