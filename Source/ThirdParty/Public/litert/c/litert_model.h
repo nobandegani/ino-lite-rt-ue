@@ -120,6 +120,10 @@ LiteRtStatus LiteRtGetOpCode(LiteRtOp op, LiteRtOpCode* code);
 // Get custom code for given op, returns error if op is not a custom op.
 LiteRtStatus LiteRtGetCustomCode(LiteRtOp op, const char** code);
 
+// Get custom options for given op.
+LiteRtStatus LiteRtGetCustomOptions(LiteRtOp op, const uint8_t** custom_options,
+                                    int32_t* size);
+
 // Get input tensors of given op.
 LiteRtStatus LiteRtGetNumOpInputs(LiteRtOp op, LiteRtParamIndex* num_inputs);
 LiteRtStatus LiteRtGetOpInput(LiteRtOp op, LiteRtParamIndex input_index,
@@ -237,6 +241,10 @@ LiteRtStatus LiteRtCreateModelFromFile(const char* filename,
 LiteRtStatus LiteRtCreateModelFromBuffer(const void* buffer_addr,
                                          size_t buffer_size,
                                          LiteRtModel* model);
+// Creates a model from the given file descriptor region. LiteRT duplicates the
+// file descriptor internally; the caller retains ownership of `fd`.
+LiteRtStatus LiteRtCreateModelFromFd(int fd, size_t offset, size_t size,
+                                     LiteRtModel* model);
 
 // Get the metadata buffer associated with given key if it exists.
 LiteRtStatus LiteRtGetModelMetadata(LiteRtModel model, const char* metadata_key,

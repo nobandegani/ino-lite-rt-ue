@@ -51,6 +51,9 @@
 //       litert_lm_conversation_clone,
 //       litert_lm_conversation_optional_args_{create,delete,set_visual_token_budget},
 //       litert_lm_engine_settings_set_{max_num_images,litert_dispatch_lib_dir})
+//   - v0.12.0      (ffed38ad)                   ->  88 functions  (no set delta)
+//   - v0.13.1      (a0afb5a5, 2026-06)          ->  89 functions  (+1 vs v0.12.0:
+//       litert_lm_conversation_get_token_count)
 
 #include "c/engine.h"
 
@@ -142,7 +145,7 @@ volatile LiteRtLmFn kLiteRtLmForceKeep[] = {
     reinterpret_cast<LiteRtLmFn>(&litert_lm_benchmark_info_get_prefill_tokens_per_sec_at),
     reinterpret_cast<LiteRtLmFn>(&litert_lm_benchmark_info_get_decode_tokens_per_sec_at),
 
-    // Conversation lifecycle + messaging (8)
+    // Conversation lifecycle + messaging (9)
     reinterpret_cast<LiteRtLmFn>(&litert_lm_conversation_create),
     reinterpret_cast<LiteRtLmFn>(&litert_lm_conversation_clone),
     reinterpret_cast<LiteRtLmFn>(&litert_lm_conversation_delete),
@@ -151,6 +154,7 @@ volatile LiteRtLmFn kLiteRtLmForceKeep[] = {
     reinterpret_cast<LiteRtLmFn>(&litert_lm_conversation_render_message_to_string),
     reinterpret_cast<LiteRtLmFn>(&litert_lm_conversation_cancel_process),
     reinterpret_cast<LiteRtLmFn>(&litert_lm_conversation_get_benchmark_info),
+    reinterpret_cast<LiteRtLmFn>(&litert_lm_conversation_get_token_count),
 
     // JSON response (from conversation API) (2)
     reinterpret_cast<LiteRtLmFn>(&litert_lm_json_response_delete),

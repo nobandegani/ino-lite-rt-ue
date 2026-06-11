@@ -111,7 +111,7 @@ cc_binary(
     deps = [
         # //c:engine is the maximal engine target (c/BUILD: the only
         # non-cpu-only variant; the alternative is //c:engine_cpu).
-        # IMPORTANT (source, litert @ d865fd82): GPU/NPU accelerators are
+        # IMPORTANT (source, litert @ a412f505): GPU/NPU accelerators are
         # NOT linked into this binary. runtime/core:engine_impl's
         # default_static_gpu_accelerator / default_static_gpu_samplers are
         # empty shells in every select() branch, litert

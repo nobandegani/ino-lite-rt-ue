@@ -77,11 +77,15 @@ accelerator/sampler libs the scripts stage next to it:
 | macOS arm64 | Metal + WebGPU | n/a (no Apple NPU vendor) |
 | iOS arm64/sim | CPU-only today² | upstream-disabled |
 
-Scripts stage `build_config_gpu_npu.h` (CPU+GPU+NPU; matches the
-upstream-default `gpu,npu` prebuilt) on Win64/Android/macOS, and
-`build_config_gpu.h` on iOS — LiteRT-LM `runtime/executor/BUILD`
+All four scripts stage BOTH upstream `build_config` variants under
+`Public/litert/build_common/config/` plus an identical platform-dispatch
+wrapper as `build_config.h` (template: `LiteRT/scripts/build_config_wrapper.h`).
+The wrapper selects `build_config_gpu.h` (NPU-off) under
+`TARGET_OS_IPHONE` and `build_config_gpu_npu.h` (upstream-default
+`gpu,npu`) everywhere else — LiteRT-LM `runtime/executor/BUILD`
 force-sets `LITERT_DISABLE_NPU` only under `@platforms//os:ios`, so the
-iOS consumer header must match.
+iOS consumer header must differ, and the shared `Public/` tree means a
+single staged variant would depend on which platform script ran last.
 
 ¹ Functional NPU additionally needs a `libLiteRtDispatch_<Vendor>`
   (Qualcomm / MediaTek / Intel OpenVINO / …) which is vendor-SDK-gated
@@ -105,8 +109,11 @@ iOS consumer header must match.
   upstream LiteRT-LM Windows-packaging defect inherited through the pin,
   NOT an InoLiteRT staging bug (the build script copies the upstream
   prebuilt faithfully) and NOT fixable in the InoAgents consumer.
-  Expected to be fixed upstream. On the next `LITERT_LM_TAG` bump,
-  re-check whether `prebuilt/windows_x86_64/libLiteRtTopKWebGpuSampler.dll`
+  Expected to be fixed upstream. Re-checked at v0.13.1 (2026-06-11):
+  still missing — the DLL exports only `Create`/`Destroy`/
+  `SampleToIdAndScoreBuffer` and `sampler_factory.cc` still requires
+  `UpdateConfig`. On the next `LITERT_LM_TAG` bump, re-check whether
+  `prebuilt/windows_x86_64/libLiteRtTopKWebGpuSampler.dll`
   exports `LiteRtTopKWebGpuSampler_UpdateConfig`; once it does, the Win64
   GPU sampler will work with no code change — delete this note then.
 
