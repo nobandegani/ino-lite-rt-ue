@@ -1,15 +1,19 @@
 # Conversion environment for NeuTTS Nano -> LiteRT.
 #
-# Two-step install. We CANNOT just `pip install -e ../../LiteRT/vendor/litert-torch`
-# because litert-torch's setup.py pins `litert-converter==0.1.*`, and that
-# package does NOT exist on PyPI under any release matching `0.1.*` (only
-# `0.0.0.devXXX`-style pre-releases exist). pip returns "from versions: none"
-# even with --pre.
+# Two-step install. Historically we could NOT just
+# `pip install -e ../../LiteRT/vendor/litert-torch` because litert-torch's
+# setup.py (at v0.9.0) pinned `litert-converter==0.1.*` back when no such
+# release existed on PyPI (only `0.0.0.devXXX` pre-releases) — pip returned
+# "from versions: none" even with --pre. As of litert-torch v0.9.1 the pin
+# is `litert-converter==0.2.*` and a stable 0.2.0 now exists on PyPI, so a
+# plain editable install may resolve — but the two-step path is what we've
+# validated (it uses upstream requirements.txt's nightly ai-edge wheel set,
+# which is what the conversion pipeline was proven against), so keep it.
 #
-# Upstream's own requirements.txt works around this with the looser
-# `litert-converter>=0.0.0.dev0` and uses `*-nightly` ai-edge packages.
+# Upstream's own requirements.txt uses the looser
+# `litert-converter>=0.0.0.dev0` and `*-nightly` ai-edge packages.
 # We piggy-back on it for the dep set, then install litert-torch itself
-# with --no-deps so its broken setup.py pins don't re-resolve.
+# with --no-deps so its setup.py pins don't re-resolve.
 #
 # Run from Plugins/InoLiteRT/Convert/NeuTTS/ (path resolution depends on CWD):
 #

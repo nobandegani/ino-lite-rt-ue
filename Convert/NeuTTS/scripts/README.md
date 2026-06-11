@@ -68,21 +68,21 @@ source .venv/bin/activate
 pip install -r scripts/requirements.txt
 
 # Step 2: install litert-torch itself, skipping its setup.py dep
-# resolution (its `litert-converter==0.1.*` pin is broken — that version
-# doesn't exist on PyPI even on Linux). The deps from step 1 already
-# cover everything it needs.
+# resolution. The deps from step 1 already cover everything it needs
+# (and are the nightly wheel set the pipeline was validated against).
 pip install --no-deps -e ../../LiteRT/vendor/litert-torch
 
 # Smoke test — prints `ok` if the install is good.
 python -c "from litert_torch.generative.utilities import converter; print('ok')"
 ```
 
-> **Why two steps?** litert-torch's `setup.py` pins `litert-converter==0.1.*`,
-> but `litert-converter` only ships to PyPI as `0.0.0.devXXX` pre-releases
-> (Linux-only) — no `0.1.*` release exists. Upstream's own `requirements.txt`
-> works around this with the looser `litert-converter>=0.0.0.dev0`. We use
-> their `requirements.txt` for the dep set, then install litert-torch
-> itself with `--no-deps` to bypass the broken pin.
+> **Why two steps?** Historically litert-torch's `setup.py` (v0.9.0)
+> pinned `litert-converter==0.1.*` before any such PyPI release existed,
+> so a plain editable install failed outright. At v0.9.1 (current vendor
+> pin) the pin is `litert-converter==0.2.*` and a stable 0.2.0 exists,
+> so one-step may now resolve — but the two-step path installs upstream
+> `requirements.txt`'s nightly ai-edge wheel set, which is what the
+> conversion pipeline was validated against, so we keep it.
 
 If you prefer **conda** to `venv`:
 
