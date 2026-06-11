@@ -395,18 +395,16 @@ if (Test-Path $lmHeader) {
 # gate for LITERT_HAS_* macros and MUST match the configuration the
 # shipped binaries were built with.
 #
-# Source of truth (litert @ d865fd82, litert/build_common/BUILD): the
-# string_flag `build_include` defaults to "gpu,npu" and the
-# build_config_header copy_file maps the default to
-# config/build_config_gpu_npu.h. Upstream's prebuilt Android libs and
-# our //c:engine build of libLiteRtLm.so are produced with that default
-# (NPU compiled IN — runtime/executor/BUILD only sets LITERT_DISABLE_NPU
-# under @platforms//os:ios, NOT Android). build_config_gpu_npu.h defines
-# neither LITERT_DISABLE_GPU nor LITERT_DISABLE_NPU, so on Android
-# (litert/c/litert_common.h:159-172) it enables OpenCL + Vulkan + WebGPU
-# + the NPU buffer macros — matching the binaries. The same header is
-# correct for both arm64-v8a and x86_64. (The older build_config_gpu.h
-# under-reported the surface vs. the NPU-on binaries — now fixed.)
+# Android binaries are upstream-default "gpu,npu" (NPU compiled IN —
+# runtime/executor/BUILD only sets LITERT_DISABLE_NPU under
+# @platforms//os:ios, NOT Android; same for both arm64-v8a and x86_64).
+# On Android (litert/c/litert_common.h:159-172) that enables OpenCL +
+# Vulkan + WebGPU + the NPU buffer macros — matching the binaries.
+# Because all four platform scripts share ONE Public/ header tree and
+# iOS needs the NPU-OFF variant, we stage BOTH upstream variants plus a
+# platform-dispatch wrapper as build_config.h (template:
+# scripts/build_config_wrapper.h) — identical from every script, so
+# staging is run-order-independent.
 #
 # GPU/NPU accelerators are NOT in the .so: every accelerator is dlopen'd
 # at runtime from the staged prebuilt set (libLiteRtGpuAccelerator.so /
@@ -414,13 +412,22 @@ if (Test-Path $lmHeader) {
 # additionally needs a libLiteRtDispatch_* vendor lib (Qualcomm /
 # MediaTek / Google Tensor) that is vendor-SDK-gated and ships in NO
 # prebuilt/ dir — gpu_npu makes the plugin NPU-ready, not functional.
-$buildConfigSrc = Join-Path $LiteRtSubDir "litert\build_common\config\build_config_gpu_npu.h"
-if (Test-Path $buildConfigSrc) {
-    Copy-Item -Path $buildConfigSrc -Destination (Join-Path $LiteRtBuildHdrDst "build_config.h") -Force
-    Write-Host "  [STAGE] litert/build_common/build_config.h (from build_config_gpu_npu.h) -> $LiteRtBuildHdrDst"
-} else {
-    Write-Warning "Expected header not found at $buildConfigSrc"
+$LiteRtBuildCfgDst = Join-Path $LiteRtBuildHdrDst "config"
+if (-not (Test-Path $LiteRtBuildCfgDst)) {
+    New-Item -ItemType Directory -Path $LiteRtBuildCfgDst -Force | Out-Null
 }
+foreach ($variant in @("build_config_gpu_npu.h", "build_config_gpu.h")) {
+    $src = Join-Path $LiteRtSubDir "litert\build_common\config\$variant"
+    if (Test-Path $src) {
+        Copy-Item -Path $src -Destination (Join-Path $LiteRtBuildCfgDst $variant) -Force
+        Write-Host "  [STAGE] litert/build_common/config/$variant -> $LiteRtBuildCfgDst"
+    } else {
+        Write-Warning "Expected header not found at $src"
+    }
+}
+$wrapperSrc = Join-Path $ScriptDir "build_config_wrapper.h"
+Copy-Item -Path $wrapperSrc -Destination (Join-Path $LiteRtBuildHdrDst "build_config.h") -Force
+Write-Host "  [STAGE] litert/build_common/build_config.h (platform-dispatch wrapper) -> $LiteRtBuildHdrDst"
 
 Write-Host ""
 Write-Host "=== Android $Arch build complete ===" -ForegroundColor Green

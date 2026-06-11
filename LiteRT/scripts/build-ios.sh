@@ -542,23 +542,34 @@ if [[ -f "${lm_header}" ]]; then
     echo "  [STAGE] litert/lm/engine.h -> ${LITERT_LM_HDR_DST}"
 fi
 
-# LiteRT build_config.h — iOS is the ONE platform that intentionally
-# stays on build_config_gpu.h (the other 3 scripts use gpu_npu).
-# Source of truth: LiteRT-LM runtime/executor/BUILD
+# LiteRT build_config.h — iOS is the ONE platform whose binaries are
+# built NPU-OFF. Source of truth: LiteRT-LM runtime/executor/BUILD
 # `llm_litert_compiled_model_executor_factory` applies
 #   defines = select({ "@platforms//os:ios": ["LITERT_DISABLE_NPU"], ... })
 # and drops :llm_litert_npu_compiled_model_executor under os:ios. So the
-# iOS LiteRtLm binary is built with NPU compiled OUT. The consumer header
-# must match: build_config_gpu.h (defines LITERT_DISABLE_NPU, leaves GPU
-# enabled). Using gpu_npu here would advertise NPU symbols/macros the iOS
-# binary does not have. iOS GPU stays enabled (Apple => Metal+WebGPU,
-# litert/c/litert_common.h:151-154); Metal/WebGPU accelerators are
-# dlopen'd from prebuilt at runtime (see the prebuilt-staging step).
-build_config_src="${LITERT_SUBDIR}/litert/build_common/config/build_config_gpu.h"
-if [[ -f "${build_config_src}" ]]; then
-    cp -f "${build_config_src}" "${LITERT_BUILD_HDR_DST}/build_config.h"
-    echo "  [STAGE] litert/build_common/build_config.h (from build_config_gpu.h, iOS NPU-disabled per upstream) -> ${LITERT_BUILD_HDR_DST}"
-fi
+# iOS LiteRtLm binary needs build_config_gpu.h (defines
+# LITERT_DISABLE_NPU, leaves GPU enabled) while Win64/Android/macOS need
+# build_config_gpu_npu.h. Because all four platform scripts share ONE
+# Public/ header tree, we stage BOTH upstream variants plus a
+# platform-dispatch wrapper as build_config.h (template:
+# scripts/build_config_wrapper.h) — identical from every script, so
+# staging is run-order-independent. The wrapper selects the gpu variant
+# under TARGET_OS_IPHONE. iOS GPU macros stay enabled (Apple =>
+# Metal+WebGPU, litert/c/litert_common.h:151-154) even though the
+# accelerator prebuilts are not shipped on iOS yet (see step 3b).
+LITERT_BUILD_CFG_DST="${LITERT_BUILD_HDR_DST}/config"
+mkdir -p "${LITERT_BUILD_CFG_DST}"
+for variant in build_config_gpu_npu.h build_config_gpu.h; do
+    src="${LITERT_SUBDIR}/litert/build_common/config/${variant}"
+    if [[ -f "${src}" ]]; then
+        cp -f "${src}" "${LITERT_BUILD_CFG_DST}/${variant}"
+        echo "  [STAGE] litert/build_common/config/${variant} -> ${LITERT_BUILD_CFG_DST}"
+    else
+        echo -e "${YELLOW}WARNING: expected header not found at ${src}${RESET}" >&2
+    fi
+done
+cp -f "${SCRIPT_DIR}/build_config_wrapper.h" "${LITERT_BUILD_HDR_DST}/build_config.h"
+echo "  [STAGE] litert/build_common/build_config.h (platform-dispatch wrapper) -> ${LITERT_BUILD_HDR_DST}"
 
 echo ""
 echo -e "${GREEN}=== iOS ${ARCH} build complete ===${RESET}"

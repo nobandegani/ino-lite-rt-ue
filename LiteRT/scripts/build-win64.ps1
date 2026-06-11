@@ -76,6 +76,10 @@ $env:ANDROID_NDK_HOME = ""
 
 Push-Location $LiteRtLmSubDir
 try {
+    # Note: as of LiteRT-LM v0.13.x the upstream .bazelrc sets
+    # `build:windows --define=resolve_symbols_in_exec=false` itself; we
+    # keep passing it explicitly for parity with upstream CI's dynamic-
+    # linking job (harmless duplication, same value).
     & bazelisk --output_base=$LiteRtLmOutputBase `
         build //ino:LiteRtLm `
         --disk_cache=$LiteRtLmDiskCache `
@@ -403,18 +407,14 @@ if (Test-Path $lmHeader) {
 # built with, or the UE C++ side will see a different feature surface
 # than libLiteRt.dll / LiteRtLm.dll actually expose.
 #
-# Source of truth (litert @ d865fd82, litert/build_common/BUILD): the
-# string_flag `build_include` defaults to "gpu,npu", and the
-# build_config_header copy_file rule maps the default condition to
-# config/build_config_gpu_npu.h. The upstream prebuilt libLiteRt.dll
-# (prebuilt/windows_x86_64/) and our //c:engine build of LiteRtLm.dll
-# are both produced with that default => NPU code paths compiled IN.
-# build_config_gpu_npu.h defines neither LITERT_DISABLE_GPU nor
-# LITERT_DISABLE_NPU, so on Win64 (litert/c/litert_common.h:155-165)
-# it enables the WebGPU + Vulkan GPU defaults and the NPU buffer
-# macros — matching the binaries. (The older build_config_gpu.h
-# variant set LITERT_DISABLE_NPU, which under-reported the surface
-# vs. the NPU-on binaries — a latent mismatch, now fixed.)
+# Win64 binaries are upstream-default "gpu,npu" (litert @ a412f505,
+# litert/build_common/BUILD: string_flag `build_include` defaults to
+# "gpu,npu" => copy_file default is config/build_config_gpu_npu.h);
+# iOS is the one platform whose binaries are built NPU-OFF. Because all
+# four platform scripts share ONE Public/ header tree, we stage BOTH
+# upstream variants plus a platform-dispatch wrapper as build_config.h
+# (template: scripts/build_config_wrapper.h). Every build script stages
+# the identical three files, so staging is run-order-independent.
 #
 # GPU/NPU accelerators are NOT in the binary: litert
 # build_common/special_rule.bzl litert_gpu_accelerator_deps() returns
@@ -425,13 +425,22 @@ if (Test-Path $lmHeader) {
 # needs a libLiteRtDispatch_* vendor lib (Qualcomm/Intel OpenVINO/…)
 # which is vendor-SDK-gated and ships in NO prebuilt/ dir — the
 # gpu_npu header makes the plugin NPU-ready, not NPU-functional.
-$buildConfigSrc = Join-Path $LiteRtSubDir "litert\build_common\config\build_config_gpu_npu.h"
-if (Test-Path $buildConfigSrc) {
-    Copy-Item -Path $buildConfigSrc -Destination (Join-Path $LiteRtBuildHdrDst "build_config.h") -Force
-    Write-Host "  [STAGE] litert/build_common/build_config.h (from build_config_gpu_npu.h) -> $LiteRtBuildHdrDst"
-} else {
-    Write-Warning "Expected header not found at $buildConfigSrc"
+$LiteRtBuildCfgDst = Join-Path $LiteRtBuildHdrDst "config"
+if (-not (Test-Path $LiteRtBuildCfgDst)) {
+    New-Item -ItemType Directory -Path $LiteRtBuildCfgDst -Force | Out-Null
 }
+foreach ($variant in @("build_config_gpu_npu.h", "build_config_gpu.h")) {
+    $src = Join-Path $LiteRtSubDir "litert\build_common\config\$variant"
+    if (Test-Path $src) {
+        Copy-Item -Path $src -Destination (Join-Path $LiteRtBuildCfgDst $variant) -Force
+        Write-Host "  [STAGE] litert/build_common/config/$variant -> $LiteRtBuildCfgDst"
+    } else {
+        Write-Warning "Expected header not found at $src"
+    }
+}
+$wrapperSrc = Join-Path $ScriptDir "build_config_wrapper.h"
+Copy-Item -Path $wrapperSrc -Destination (Join-Path $LiteRtBuildHdrDst "build_config.h") -Force
+Write-Host "  [STAGE] litert/build_common/build_config.h (platform-dispatch wrapper) -> $LiteRtBuildHdrDst"
 
 Write-Host ""
 Write-Host "=== Build complete ===" -ForegroundColor Green
