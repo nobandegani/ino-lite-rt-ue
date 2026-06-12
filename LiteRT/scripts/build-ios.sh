@@ -510,12 +510,15 @@ for fw_name in "${FRAMEWORK_NAMES[@]}"; do
     # modes into the zip, so normalize before zipping.
     chmod 755 "${fw_dir}/${fw_name}"
     # Upstream prebuilts can declare a higher LC_BUILD_VERSION minos than
-    # the consuming app's MinimumiOSVersion — Gemma's prebuilt ships
-    # minos=26.2 — and App Store processing rejects that (ITMS-90208).
-    # Clamp to IOS_MIN_TARGET (keep in sync with the project's
-    # MinimumiOSVersion, currently IOS_16). Signing is unaffected: UE
-    # re-signs embedded frameworks at packaging time (see 3e above).
-    IOS_MIN_TARGET="16.0"
+    # this framework's Info.plist MinimumOSVersion — Gemma's prebuilt ships
+    # minos=26.2 — and App Store processing rejects the mismatch
+    # (ITMS-90208: binary minos must match the framework's own Info.plist;
+    # verified empirically — a binary at 16.0 against a 13.0 plist still
+    # fails, while LiteRtLm at 13.0/13.0 passes). Clamp to IOS_MIN_TARGET,
+    # which MUST equal the MinimumOSVersion written to the Info.plist in
+    # section 3d above. Signing is unaffected: UE re-signs embedded
+    # frameworks at packaging time (see 3e above).
+    IOS_MIN_TARGET="13.0"
     fw_bin="${fw_dir}/${fw_name}"
     cur_minos=$(vtool -show-build "${fw_bin}" | awk '$1=="minos"{print $2; exit}')
     if [[ -n "${cur_minos}" && "${cur_minos}" != "${IOS_MIN_TARGET}" ]] && \
