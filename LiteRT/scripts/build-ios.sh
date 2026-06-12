@@ -509,6 +509,21 @@ for fw_name in "${FRAMEWORK_NAMES[@]}"; do
     # owner-writable bit on framework executables (755) — ditto preserves
     # modes into the zip, so normalize before zipping.
     chmod 755 "${fw_dir}/${fw_name}"
+    # Upstream prebuilts can declare a higher LC_BUILD_VERSION minos than
+    # the consuming app's MinimumiOSVersion — Gemma's prebuilt ships
+    # minos=26.2 — and App Store processing rejects that (ITMS-90208).
+    # Clamp to IOS_MIN_TARGET (keep in sync with the project's
+    # MinimumiOSVersion, currently IOS_16). Signing is unaffected: UE
+    # re-signs embedded frameworks at packaging time (see 3e above).
+    IOS_MIN_TARGET="16.0"
+    fw_bin="${fw_dir}/${fw_name}"
+    cur_minos=$(vtool -show-build "${fw_bin}" | awk '$1=="minos"{print $2; exit}')
+    if [[ -n "${cur_minos}" && "${cur_minos}" != "${IOS_MIN_TARGET}" ]] && \
+       [[ "$(printf '%s\n' "${IOS_MIN_TARGET}" "${cur_minos}" | sort -V | tail -1)" == "${cur_minos}" ]]; then
+        cur_sdk=$(vtool -show-build "${fw_bin}" | awk '$1=="sdk"{print $2; exit}')
+        vtool -set-build-version ios "${IOS_MIN_TARGET}" "${cur_sdk}" -replace -output "${fw_bin}" "${fw_bin}"
+        echo "  [VTOOL] ${fw_name}: minos ${cur_minos} -> ${IOS_MIN_TARGET} (sdk ${cur_sdk})"
+    fi
     (cd "${ARCH_DST}" && ditto -c -k --keepParent "${fw_name}.framework" "${fw_zip}")
     echo "  [ZIP] ${fw_name}.framework -> $(basename "${fw_zip}") ($(du -h "${fw_zip}" | cut -f1))"
 done
