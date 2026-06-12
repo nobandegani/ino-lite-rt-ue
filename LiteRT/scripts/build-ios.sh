@@ -505,6 +505,10 @@ for fw_name in "${FRAMEWORK_NAMES[@]}"; do
     fw_dir="${ARCH_DST}/${fw_name}.framework"
     fw_zip="${ARCH_DST}/${fw_name}.framework.zip"
     [[ -d "${fw_dir}" ]] || continue
+    # Bazel outputs are read-only (555); App Store validation requires the
+    # owner-writable bit on framework executables (755) — ditto preserves
+    # modes into the zip, so normalize before zipping.
+    chmod 755 "${fw_dir}/${fw_name}"
     (cd "${ARCH_DST}" && ditto -c -k --keepParent "${fw_name}.framework" "${fw_zip}")
     echo "  [ZIP] ${fw_name}.framework -> $(basename "${fw_zip}") ($(du -h "${fw_zip}" | cut -f1))"
 done
