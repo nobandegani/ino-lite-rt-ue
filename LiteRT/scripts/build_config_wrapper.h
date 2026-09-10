@@ -1,3 +1,4 @@
+// Copyright 2026 Inoland. Licensed under the Apache License, Version 2.0.
 // build_config.h — InoLiteRT platform-dispatch wrapper (NOT an upstream file).
 //
 // Template lives at LiteRT/scripts/build_config_wrapper.h; every platform
