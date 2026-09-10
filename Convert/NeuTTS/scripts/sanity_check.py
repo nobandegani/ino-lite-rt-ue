@@ -1,3 +1,4 @@
+# Copyright 2026 Inoland. Licensed under the Apache License, Version 2.0.
 """Sanity-check the converted ``neutts_nano.tflite``.
 
 Loads the .tflite via ai_edge_litert, inspects its signatures, runs one

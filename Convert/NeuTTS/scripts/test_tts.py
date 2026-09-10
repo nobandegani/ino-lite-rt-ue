@@ -1,3 +1,4 @@
+# Copyright 2026 Inoland. Licensed under the Apache License, Version 2.0.
 """End-to-end TTS smoke test: text -> audio.
 
 Loads:

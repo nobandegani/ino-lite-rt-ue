@@ -1,3 +1,4 @@
+# Copyright 2026 Inoland. Licensed under the Apache License, Version 2.0.
 """Bundle the NeuTTS Nano backbone, tokenizer, and chat template into ``.litertlm``.
 
 For each existing ``.tflite`` variant in ``output/``, produces a matching

@@ -1,3 +1,4 @@
+# Copyright 2026 Inoland. Licensed under the Apache License, Version 2.0.
 """NeuCodec decoder authoring for litert-torch conversion.
 
 Mirrors upstream's ONNX-export pattern from

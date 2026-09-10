@@ -1,3 +1,4 @@
+# Copyright 2026 Inoland. Licensed under the Apache License, Version 2.0.
 """NeuTTS Nano backbone — model authoring for litert-torch.
 
 Re-authors NeuTTS Nano's backbone (a 24-layer Llama-3-family causal LM with

@@ -1,3 +1,4 @@
+# Copyright 2026 Inoland. Licensed under the Apache License, Version 2.0.
 """Convert the NeuCodec decoder to ``.tflite`` via litert-torch.
 
 Mirrors ``vendor/neucodec/onnx/export_onnx.py`` but uses

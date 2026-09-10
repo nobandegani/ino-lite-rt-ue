@@ -1,3 +1,4 @@
+# Copyright 2026 Inoland. Licensed under the Apache License, Version 2.0.
 """Verify the re-authored NeuTTS Nano matches the HF model logits.
 
 Run BEFORE conversion. If verification fails, the re-authored architecture is

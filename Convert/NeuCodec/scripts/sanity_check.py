@@ -1,3 +1,4 @@
+# Copyright 2026 Inoland. Licensed under the Apache License, Version 2.0.
 """Sanity-check the converted NeuCodec decoder ``.tflite``.
 
 Loads both the .tflite (via ai_edge_litert) and the equivalent PyTorch
