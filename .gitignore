@@ -1,12 +1,53 @@
-Binaries/Win64
-Binaries/Android
-Binaries/Mac
-Binaries/IOS
-Intermediate
+# ---------------------------------------------------------------------------
+# Unreal build output
+# ---------------------------------------------------------------------------
+Binaries/
+Intermediate/
+Saved/
+DerivedDataCache/
 
-# Build-script cache: downloaded prebuilts staged from third parties
-# (e.g. Microsoft DXC v1.9.2602 zip pinned by vendor/LiteRT-LM/WORKSPACE).
-# build-win64.ps1 redownloads on demand; checking the zip in would just
-# bloat the repo.
+# ---------------------------------------------------------------------------
+# Build-script caches
+# ---------------------------------------------------------------------------
+# Downloaded third-party prebuilts staged by the build scripts — e.g. the
+# Microsoft DXC v1.9.2602 zip pinned by vendor/LiteRT-LM/WORKSPACE.
+# build-win64.ps1 re-downloads on demand; checking the zip in would just
+# bloat a repo that is already binary-heavy.
 LiteRT/.cache/
-Convert/NeuTTS/models/*
+
+# Bazel build trees + symlinks inside the LiteRT-LM submodule.
+LiteRT/vendor/LiteRT-LM/bazel-*
+LiteRT/vendor/LiteRT-LM/overlay/
+user.bazelrc
+
+# Converter model/output working dirs (multi-GB checkpoints, never committed).
+Convert/NeuTTS/models/
+Convert/NeuCodec/models/
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# ---------------------------------------------------------------------------
+# IDE / editor / per-developer tool state
+# ---------------------------------------------------------------------------
+.vs/
+.idea/
+*.sln
+*.suo
+*.VC.db
+*.opensdf
+*.sdf
+*.iml
+*.iws
+
+# Claude Code per-developer permission grants — these embed machine-specific
+# absolute paths, so they are deliberately not shared.
+.claude/settings.local.json
+
+# ---------------------------------------------------------------------------
+# OS cruft
+# ---------------------------------------------------------------------------
+.DS_Store
+Thumbs.db
+desktop.ini

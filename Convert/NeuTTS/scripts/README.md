@@ -57,7 +57,7 @@ Your Windows drives appear under `/mnt/<letter>/`. Move into the project
 and set up the env:
 
 ```bash
-cd /mnt/e/Projects/InoProject/Plugins/InoLiteRT/Convert/NeuTTS
+cd <YourProject>/Plugins/InoLiteRT/Convert/NeuTTS
 
 python3.11 -m venv .venv
 source .venv/bin/activate

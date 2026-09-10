@@ -64,7 +64,7 @@ NeuCodec-specific extras:
 
 ```bash
 conda activate inolitert-conv
-cd /mnt/e/Projects/InoProject/Plugins/InoLiteRT/Convert/NeuCodec
+cd <YourProject>/Plugins/InoLiteRT/Convert/NeuCodec
 pip install -r scripts/requirements.txt
 ```
 
